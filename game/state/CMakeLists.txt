@@ -2,7 +2,7 @@
 PROJECT(OpenApoc_GameState CXX C)
 
 # check cmake version
-CMAKE_MINIMUM_REQUIRED(VERSION 3.1)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.9)
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
@@ -24,7 +24,7 @@ set (GAMESTATE_SOURCE_FILES
 	battle/ai/unitaihelper.cpp
 	battle/ai/unitailowmorale.cpp
 	battle/ai/unitaivanilla.cpp
-	
+
 	battle/battle.cpp
 	battle/battledoor.cpp
 	battle/battleexplosion.cpp
@@ -35,7 +35,7 @@ set (GAMESTATE_SOURCE_FILES
 	battle/battlescanner.cpp
 	battle/battleunit.cpp
 	battle/battleunitmission.cpp
-	
+
 	city/agentmission.cpp
 	city/base.cpp
 	city/building.cpp
@@ -47,7 +47,7 @@ set (GAMESTATE_SOURCE_FILES
 	city/vehicle.cpp
 	city/vehiclemission.cpp
 	city/vequipment.cpp
-	
+
 	rules/battle/battlemap.cpp
 	rules/battle/battlemapsector.cpp
 	rules/battle/battlemapparttype.cpp
@@ -55,7 +55,7 @@ set (GAMESTATE_SOURCE_FILES
 	rules/battle/battleunitimagepack.cpp
 	rules/battle/battlemaptileset.cpp
 	rules/battle/damage.cpp
-	
+
 	rules/city/baselayout.cpp
 	rules/city/facilitytype.cpp
 	rules/city/scenerytiletype.cpp
@@ -66,26 +66,29 @@ set (GAMESTATE_SOURCE_FILES
 	rules/city/vammotype.cpp
 	rules/city/vehicletype.cpp
 	rules/city/vequipmenttype.cpp
-	
+
 	rules/aequipmenttype.cpp
 	rules/agenttype.cpp
 	rules/doodadtype.cpp
 	rules/supportedmappart.cpp
-	
+
 	shared/aequipment.cpp
 	shared/agent.cpp
 	shared/doodad.cpp
 	shared/organisation.cpp
 	shared/projectile.cpp
-	
+
 	gameevent.cpp
 	gamestate.cpp
 	gamestate_serialize.cpp
 	gamestate_serialize_generated.cpp
 	gametime.cpp
+	luagamestate.cpp
+	luagamestate_support.cpp
+	luagamestate_support_generated.cpp
 	message.cpp
 	savemanager.cpp
-	
+
 	tilemap/collision.cpp
 	tilemap/pathfinding.cpp
 	tilemap/tile.cpp
@@ -112,7 +115,7 @@ set (GAMESTATE_HEADER_FILES
 	battle/ai/unitaihelper.h
 	battle/ai/unitailowmorale.h
 	battle/ai/unitaivanilla.h
-	
+
 	battle/battle.h
 	battle/battledoor.h
 	battle/battleexplosion.h
@@ -123,7 +126,7 @@ set (GAMESTATE_HEADER_FILES
 	battle/battlescanner.h
 	battle/battleunit.h
 	battle/battleunitmission.h
-	
+
 	city/agentmission.h
 	city/base.h
 	city/building.h
@@ -135,7 +138,7 @@ set (GAMESTATE_HEADER_FILES
 	city/vehicle.h
 	city/vehiclemission.h
 	city/vequipment.h
-	
+
 	rules/battle/battlecommonimagelist.h
 	rules/battle/battlecommonsamplelist.h
 	rules/battle/battlemap.h
@@ -145,7 +148,7 @@ set (GAMESTATE_HEADER_FILES
 	rules/battle/battleunitimagepack.h
 	rules/battle/battlemaptileset.h
 	rules/battle/damage.h
-	
+
 	rules/city/baselayout.h
 	rules/city/citycommonimagelist.h
 	rules/city/citycommonsamplelist.h
@@ -158,19 +161,19 @@ set (GAMESTATE_HEADER_FILES
 	rules/city/vammotype.h
 	rules/city/vehicletype.h
 	rules/city/vequipmenttype.h
-	
+
 	rules/aequipmenttype.h
 	rules/agenttype.h
 	rules/doodadtype.h
 	rules/supportedmappart.h
-	
+
 	shared/aequipment.h
 	shared/agent.h
 	shared/doodad.h
 	shared/equipment.h
 	shared/organisation.h
 	shared/projectile.h
-	
+
 	gameevent.h
 	gameeventtypes.h
 	gamestate.h
@@ -178,10 +181,13 @@ set (GAMESTATE_HEADER_FILES
 	gamestate_serialize_generated.h
 	gametime.h
 	gametime_facet.h
+	luagamestate.h
+	luagamestate_support.h
+	luagamestate_support_generated.h
 	message.h
 	savemanager.h
 	stateobject.h
-	
+
 	tilemap/collision.h
 	tilemap/tile.h
 	tilemap/tilemap.h
@@ -212,21 +218,41 @@ target_link_libraries(OpenApoc_GameState PUBLIC OpenApoc_Framework)
 
 target_link_libraries(OpenApoc_GameState PUBLIC ${Boost_LIBRARIES}
 		Threads::Threads)
+if (WIN32)
+	target_link_libraries(OpenApoc_GameState PUBLIC bcrypt)
+endif()
+
+target_link_libraries(OpenApoc_GameState PUBLIC OpenApoc_Lua)
 
 # This needs to be public as gamestate_serialize_generated.h needs to be in
 # the path
 target_include_directories(OpenApoc_GameState PUBLIC ${CMAKE_BINARY_DIR})
 
-set_property(TARGET OpenApoc_GameState PROPERTY CXX_STANDARD 11)
-
 add_custom_command(OUTPUT
 		gamestate_serialize_generated.h
 		gamestate_serialize_generated.cpp
 		COMMAND
-		${CMAKE_BINARY_DIR}/bin/OpenApoc_GamestateSerializeGen
+		$<TARGET_FILE:OpenApoc_GamestateSerializeGen>
 		-x ${CMAKE_SOURCE_DIR}/game/state/gamestate_serialize.xml
 		-h gamestate_serialize_generated.h
 		-o gamestate_serialize_generated.cpp
 		DEPENDS
-		${CMAKE_BINARY_DIR}/bin/OpenApoc_GamestateSerializeGen
+		OpenApoc_GamestateSerializeGen
 		${CMAKE_SOURCE_DIR}/game/state/gamestate_serialize.xml)
+
+add_custom_command(OUTPUT
+		luagamestate_support_generated.h
+		luagamestate_support_generated.cpp
+		COMMAND
+		$<TARGET_FILE:OpenApoc_LuaGamestateSupportGen>
+		-x ${CMAKE_SOURCE_DIR}/game/state/gamestate_serialize.xml
+		-h luagamestate_support_generated.h
+		-o luagamestate_support_generated.cpp
+		DEPENDS
+		OpenApoc_LuaGamestateSupportGen
+		${CMAKE_SOURCE_DIR}/game/state/gamestate_serialize.xml)
+
+add_custom_target(generated-source
+		DEPENDS
+		gamestate_serialize_generated.h gamestate_serialize_generated.cpp
+		luagamestate_support_generated.h luagamestate_support_generated.cpp)

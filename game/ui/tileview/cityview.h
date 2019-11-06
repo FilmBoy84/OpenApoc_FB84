@@ -123,6 +123,8 @@ class CityView : public CityTileView
 	~CityView() override;
 
 	void initiateUfoMission(StateRef<Vehicle> ufo, StateRef<Vehicle> playerCraft);
+	void initiateBuildingMission(sp<GameState> state, StateRef<Building> building,
+	                             std::list<StateRef<Agent>> agents);
 
 	void begin() override;
 	void resume() override;
@@ -137,6 +139,7 @@ class CityView : public CityTileView
 	void setUpdateSpeed(CityUpdateSpeed updateSpeed);
 	void zoomLastEvent();
 	void setSelectionState(CitySelectionState selectionState);
+	void setSelectedTab(int tabIndex);
 };
 
 }; // namespace OpenApoc

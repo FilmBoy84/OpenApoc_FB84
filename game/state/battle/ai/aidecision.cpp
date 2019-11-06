@@ -62,8 +62,9 @@ bool AIAction::inProgressInternal(BattleUnit &u)
 			return !u.missions.empty() &&
 			       u.missions.front()->type == BattleUnitMission::Type::ThrowItem;
 		case AIAction::Type::AttackWeaponTile:
-			return u.isAttacking() && (u.targetingMode == BattleUnit::TargetingMode::TileCenter ||
-			                           u.targetingMode == BattleUnit::TargetingMode::TileGround) &&
+			return u.isAttacking() &&
+			       (u.targetingMode == BattleUnit::TargetingMode::TileCenter ||
+			        u.targetingMode == BattleUnit::TargetingMode::TileGround) &&
 			       u.targetTile == targetLocation;
 		case AIAction::Type::AttackWeaponUnit:
 			return u.isAttacking() && u.targetingMode == BattleUnit::TargetingMode::Unit &&
@@ -72,7 +73,7 @@ bool AIAction::inProgressInternal(BattleUnit &u)
 		case AIAction::Type::AttackPsiStun:
 		case AIAction::Type::AttackPsiPanic:
 			// Even though the attack might already be over, we won't check for it
-			// This is intentional. Psi attack is considered "in progress" indefinetly
+			// This is intentional. Psi attack is considered "in progress" indefinitely
 			// otherwise, especially in TB, when attack is instant, AI would spam attacks and
 			// we would rather have them do attacks with a small delay
 			// which we introduce via reThinkDelay value
@@ -202,4 +203,4 @@ UString AIDecision::getName()
 }
 
 bool AIDecision::isEmpty() { return !action && !movement; }
-}
+} // namespace OpenApoc

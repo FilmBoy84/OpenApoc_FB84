@@ -108,11 +108,11 @@ void TileObjectBattleUnit::draw(Renderer &r, TileTransform &transform, Vec2<floa
 			// 0 = friendly, 1 = enemy, 2 = neutral
 			int side_offset = friendly ? 0 : (hostile ? 1 : 2);
 			// Icon type, 0 = normal, 1 = prone, 2 = large
-			int icon_type =
-			    unit->isLarge() ? ICON_LARGE : ((unit->current_body_state == BodyState::Prone ||
-			                                     unit->target_body_state == BodyState::Prone)
-			                                        ? ICON_PRONE
-			                                        : ICON_STANDART);
+			int icon_type = unit->isLarge() ? ICON_LARGE
+			                                : ((unit->current_body_state == BodyState::Prone ||
+			                                    unit->target_body_state == BodyState::Prone)
+			                                       ? ICON_PRONE
+			                                       : ICON_STANDART);
 			// Unit facing, in game starts with north (0,-1) and goes clockwise, from 0 to 7
 			int facing_offset = offset_dir_map.at(unit->facing);
 			// Current level offset, 0 = current 1 = above 2 = below
@@ -269,7 +269,7 @@ void TileObjectBattleUnit::setPosition(Vec3<float> newPosition)
 	// Vanilla allowed units to "pop into" other units without any limit
 	// That is, unit can stand on height 38 while another unit is hovering in the tile above,
 	// and cause no problems whatsoever, even though they're almost fully inside each other
-	// (theis positions only differ by 1 pixel)
+	// (their positions only differ by 1 pixel)
 	// We could introduce an option to disallow this?
 	// Right now, here goes vanilla behavior
 	if (u->current_movement_state == MovementState::Brainsuck)
@@ -405,7 +405,8 @@ sp<VoxelMap> TileObjectBattleUnit::getVoxelMap(Vec3<int> mapIndex, bool) const
 {
 	auto u = this->getUnit();
 	auto size = u->agent->type->bodyType->size.at(u->current_body_state).at(u->facing);
-	if (mapIndex.x >= size.x || mapIndex.y >= size.y || mapIndex.z >= size.z)
+	if (mapIndex.x >= size.x || mapIndex.y >= size.y || mapIndex.z >= size.z || mapIndex.x < 0 ||
+	    mapIndex.y < 0 || mapIndex.z < 0)
 		return nullptr;
 
 	return u->agent->type->bodyType->voxelMaps.at(u->current_body_state)

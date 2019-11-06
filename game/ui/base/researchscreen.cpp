@@ -218,7 +218,7 @@ void ResearchScreen::eventOccurred(Event *e)
 
 	if (e->type() == EVENT_MOUSE_MOVE)
 	{
-		arrow->setVisible(!(e->mouse().X > form->Location.x + arrow->Location.x));
+		arrow->setVisible(!(e->mouse().X > arrow->getLocationOnScreen().x));
 	}
 
 	if (e->type() == EVENT_FORM_INTERACTION)
@@ -387,6 +387,7 @@ void ResearchScreen::setCurrentLabInfo()
 						         this->assigned_agent_count,
 						         this->viewFacility->type->capacityAmount);
 					}
+					agent.second->lab_assigned = this->viewFacility->lab;
 					assigned_to_current_lab = true;
 					break;
 				}
@@ -397,12 +398,12 @@ void ResearchScreen::setCurrentLabInfo()
 		if (assigned_to_current_lab)
 		{
 			assignedAgentList->addItem(ControlGenerator::createLargeAgentControl(
-			    *state, agent.second, true, UnitSelectionState::NA, false, true));
+			    *state, agent.second, 160, UnitSkillState::Horizontal));
 		}
 		else
 		{
 			unassignedAgentList->addItem(ControlGenerator::createLargeAgentControl(
-			    *state, agent.second, true, UnitSelectionState::NA, false, false));
+			    *state, agent.second, unassignedAgentList->Size.x, UnitSkillState::Vertical));
 		}
 	}
 	assignedAgentList->ItemSize = agentEntryHeight;
@@ -441,14 +442,17 @@ void ResearchScreen::updateProgressInfo()
 		{
 			case ResearchTopic::Type::BioChem:
 			case ResearchTopic::Type::Physics:
-				projectProgress =
-				    clamp((float)topic->man_hours_progress / (float)topic->man_hours, 0.0f, 1.0f);
+				projectProgress = clamp(static_cast<float>(topic->man_hours_progress) /
+				                            static_cast<float>(topic->man_hours),
+				                        0.0f, 1.0f);
 				break;
 			case ResearchTopic::Type::Engineering:
 				projectProgress =
-				    clamp((float)(this->viewFacility->lab->manufacture_man_hours_invested +
-				                  topic->man_hours * this->viewFacility->lab->manufacture_done) /
-				              (float)(topic->man_hours * this->viewFacility->lab->manufacture_goal),
+				    clamp(static_cast<float>(
+				              this->viewFacility->lab->manufacture_man_hours_invested +
+				              topic->man_hours * this->viewFacility->lab->manufacture_done) /
+				              static_cast<float>(topic->man_hours *
+				                                 this->viewFacility->lab->manufacture_goal),
 				          0.0f, 1.0f);
 				break;
 			default:
@@ -473,7 +477,7 @@ void ResearchScreen::updateProgressInfo()
 		auto topicTitle = form->findControlTyped<Label>("TEXT_CURRENT_PROJECT");
 		topicTitle->setText(tr(topic->name));
 		auto completionPercent = form->findControlTyped<Label>("TEXT_PROJECT_COMPLETION");
-		auto completionText = format(tr("%d%%"), (int)(projectProgress * 100.0f));
+		auto completionText = format(tr("%d%%"), static_cast<int>(projectProgress * 100.0f));
 		completionPercent->setText(completionText);
 	}
 	else
@@ -504,7 +508,7 @@ void ResearchScreen::updateProgressInfo()
 		manufacturing_scroll_left->setVisible(true);
 		manufacturing_scroll_right->setVisible(true);
 		manufacturing_scrollbar->setValue(this->viewFacility->lab->getQuantity());
-		manufacturing_quantity->setText(format(tr("%d"), this->viewFacility->lab->getQuantity()));
+		manufacturing_quantity->setText(format("%d", this->viewFacility->lab->getQuantity()));
 	}
 	else
 	{

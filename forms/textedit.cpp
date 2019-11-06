@@ -18,6 +18,7 @@ TextEdit::TextEdit(const UString &Text, sp<BitmapFont> font)
       editing(false), SelectionStart(Text.length()), TextHAlign(HorizontalAlignment::Left),
       TextVAlign(VerticalAlignment::Centre)
 {
+	isClickable = true;
 	if (font)
 	{
 		palette = font->getPalette();
@@ -42,18 +43,19 @@ void TextEdit::eventOccured(Event *e)
 			    e->forms().EventFlag == FormEventType::MouseClick ||
 			    e->forms().EventFlag == FormEventType::KeyDown)
 			{
-				editing = true;
-
-				fw().textStartInput();
-				// e->Handled = true;
-				// FIXME: Should we really fall through here?
+				if (!editing)
+				{
+					editing = true;
+					fw().textStartInput();
+					// e->Handled = true;
+					// FIXME: Should we really fall through here?
+				}
 			}
 		}
 		if (editing)
 		{
 			if (e->forms().RaisedBy == shared_from_this())
 			{
-
 				if (e->forms().EventFlag == FormEventType::LostFocus)
 				{
 					editing = false;
@@ -66,7 +68,7 @@ void TextEdit::eventOccured(Event *e)
 			{
 				// FIXME: Due to event duplication (?), this code won't work. Can only stop editing
 				// text by pressing enter.
-				// editting = false;
+				// editing = false;
 				// fw().textStopInput();
 				// raiseEvent(FormEventType::TextEditFinish);
 			}

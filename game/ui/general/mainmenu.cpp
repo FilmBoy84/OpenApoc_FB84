@@ -17,17 +17,19 @@
 namespace OpenApoc
 {
 
-static std::vector<UString> tracks{"music:0", "music:1", "music:2"};
-
 MainMenu::MainMenu() : Stage(), mainmenuform(ui().getForm("mainmenu"))
 {
 	auto versionLabel = mainmenuform->findControlTyped<Label>("VERSION_LABEL");
 	versionLabel->setText(OPENAPOC_VERSION);
+#ifndef NDEBUG
+	auto debugButton = mainmenuform->findControlTyped<Control>("BUTTON_DEBUG");
+	debugButton->setVisible(true);
+#endif
 }
 
 MainMenu::~MainMenu() = default;
 
-void MainMenu::begin() { fw().jukebox->play(tracks); }
+void MainMenu::begin() { fw().jukebox->play(JukeBox::PlayList::City); }
 
 void MainMenu::pause() {}
 
@@ -44,6 +46,11 @@ void MainMenu::eventOccurred(Event *e)
 		if (e->keyboard().KeyCode == SDLK_ESCAPE)
 		{
 			fw().stageQueueCommand({StageCmd::Command::QUIT});
+			return;
+		}
+		if (e->keyboard().KeyCode == SDLK_d)
+		{
+			fw().stageQueueCommand({StageCmd::Command::PUSH, mksp<DebugMenu>()});
 			return;
 		}
 	}

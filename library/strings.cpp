@@ -2,9 +2,7 @@
 #include "library/strings_format.h"
 #include <cctype>
 #include <tuple> // used for std::ignore
-// Disable automatic #pragma linking for boost - only enabled in msvc and that should provide boost
-// symbols as part of the module that uses it
-#define BOOST_ALL_NO_LIB
+
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/locale/message.hpp>
 
@@ -177,6 +175,7 @@ UString::UString(const char *cstr)
 		this->u8Str = cstr;
 	}
 }
+UString::UString(const char *cstr, size_t count) : u8Str(cstr, count) {}
 
 UString::UString(const UString &) = default;
 
@@ -187,6 +186,11 @@ UString::UString(UniChar uc) : u8Str()
 	char buf[4];
 	auto bytes = unichar_to_utf8(uc, buf);
 	u8Str = {buf, bytes};
+}
+
+UString::UString(UString::ConstIterator first, UString::ConstIterator last)
+    : UString(first.s.u8Str.substr(first.offset, last.offset - first.offset))
+{
 }
 
 const std::string &UString::str() const { return this->u8Str; }
@@ -201,13 +205,20 @@ bool UString::operator==(const UString &other) const { return (this->u8Str) == (
 
 UString UString::substr(size_t offset, size_t length) const
 {
-	return this->u8Str.substr(offset, length);
+	auto sub_start = std::next(this->begin(), offset);
+	auto sub_end = sub_start;
+	while (length != 0 && sub_end != this->end())
+	{
+		++sub_end;
+		--length;
+	}
+	return UString{sub_start, sub_end};
 }
 
 UString UString::toUpper() const
 {
 	/* Only change the case on ascii range characters (codepoint <=0x7f)
-	 * As we know the top bit is set for any bytes outside this range no matter the postion in the
+	 * As we know the top bit is set for any bytes outside this range no matter the position in the
 	 * utf8 stream, we can cheat a bit here */
 	UString upper_string = *this;
 	for (size_t i = 0; i < upper_string.cStrLength(); i++)
@@ -221,7 +232,7 @@ UString UString::toUpper() const
 UString UString::toLower() const
 {
 	/* Only change the case on ascii range characters (codepoint <=0x7f)
-	 * As we know the top bit is set for any bytes outside this range no matter the postion in the
+	 * As we know the top bit is set for any bytes outside this range no matter the position in the
 	 * utf8 stream, we can cheat a bit here */
 	UString lower_string = *this;
 	for (size_t i = 0; i < lower_string.cStrLength(); i++)
@@ -296,6 +307,13 @@ std::ostream &operator<<(std::ostream &lhs, const UString &rhs)
 	return lhs;
 }
 
+// FIXME: This may not work with certain non-ascii characters
+std::istream &operator>>(std::istream &lhs, UString &rhs)
+{
+	lhs >> rhs.u8Str;
+	return lhs;
+}
+
 std::vector<UString> UString::split(const UString &delims) const
 {
 	// FIXME: Probably won't work if any of 'delims' is outside the ASCII range
@@ -331,6 +349,39 @@ bool UString::endsWith(const UString &suffix) const
 	return boost::ends_with(str(), suffix.str());
 }
 
+UString UString::trimLeft() const
+{
+	auto first = begin();
+	auto last = end();
+	while (first != last && Strings::isWhiteSpace(*first))
+		++first;
+	return {first, last};
+}
+UString UString::trimRight() const
+{
+	auto first = begin();
+	auto last = end();
+	if (first == last)
+		return {};
+	--last;
+	while (first != last && Strings::isWhiteSpace(*last))
+		--last;
+	return {first, ++last};
+}
+UString UString::trim() const
+{
+	auto first = begin();
+	auto last = end();
+	while (first != last && Strings::isWhiteSpace(*first))
+		++first;
+	if (first == last)
+		return {};
+	--last;
+	while (first != last && Strings::isWhiteSpace(*last))
+		--last;
+	return {first, ++last};
+}
+
 UString::ConstIterator UString::begin() const { return UString::ConstIterator(*this, 0); }
 
 UString::ConstIterator UString::end() const
@@ -349,9 +400,27 @@ UString::ConstIterator UString::ConstIterator::operator++()
 	return *this;
 }
 
+UString::ConstIterator UString::ConstIterator::operator--()
+{
+	const char *ptr = s.cStr();
+	ptr += --this->offset;
+	while (static_cast<unsigned char>(*ptr) >= 0b10000000 &&
+	       static_cast<unsigned char>(*ptr) < 0b11000000)
+	{
+		--this->offset;
+		--ptr;
+	}
+	return *this;
+}
+
 bool UString::ConstIterator::operator!=(const UString::ConstIterator &other) const
 {
 	return (this->offset != other.offset || this->s != other.s);
+}
+
+bool UString::ConstIterator::operator==(const UString::ConstIterator &other) const
+{
+	return this->offset == other.offset && this->s == other.s;
 }
 
 UniChar UString::ConstIterator::operator*() const

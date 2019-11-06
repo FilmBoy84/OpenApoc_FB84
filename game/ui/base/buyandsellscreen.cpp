@@ -5,7 +5,6 @@
 #include "forms/label.h"
 #include "forms/radiobutton.h"
 #include "forms/scrollbar.h"
-#include "forms/transactioncontrol.h"
 #include "forms/ui.h"
 #include "framework/configfile.h"
 #include "framework/data.h"
@@ -20,6 +19,7 @@
 #include "game/state/rules/city/vammotype.h"
 #include "game/state/shared/organisation.h"
 #include "game/ui/general/messagebox.h"
+#include "game/ui/general/transactioncontrol.h"
 #include <array>
 
 namespace OpenApoc
@@ -113,8 +113,7 @@ void BuyAndSellScreen::closeScreen()
 		}
 	}
 
-	// Step 02: Check accomodation of different sorts
-	std::set<sp<TransactionControl>> linkedControls;
+	// Step 02: Check accommodation of different sorts
 	{
 		std::array<int, MAX_BASES> vecCargoDelta;
 		std::array<bool, MAX_BASES> vecChanged;
@@ -126,24 +125,19 @@ void BuyAndSellScreen::closeScreen()
 		{
 			for (auto &c : l.second)
 			{
-				if (linkedControls.find(c) != linkedControls.end())
+				if (!c->getLinked() || c->getLinked()->front().lock() == c)
 				{
-					continue;
-				}
-				int i = 0;
-				for (auto &b : state->player_bases)
-				{
-					int cargoDelta = c->getCargoDelta(i);
-					if (cargoDelta)
+					int i = 0;
+					for (auto &b : state->player_bases)
 					{
-						vecCargoDelta[i] += cargoDelta;
-						vecChanged[i] = true;
+						int cargoDelta = c->getCargoDelta(i);
+						if (cargoDelta)
+						{
+							vecCargoDelta[i] += cargoDelta;
+							vecChanged[i] = true;
+						}
+						i++;
 					}
-					i++;
-				}
-				for (auto &l : c->getLinked())
-				{
-					linkedControls.insert(l);
 				}
 			}
 		}
@@ -193,7 +187,6 @@ void BuyAndSellScreen::closeScreen()
 	// Step 03: Check transportation
 
 	// Step 03.01: Check transportation for purchases
-	linkedControls.clear();
 	bool purchaseTransferFound = false;
 	{
 		bool noFerry = false;
@@ -204,25 +197,20 @@ void BuyAndSellScreen::closeScreen()
 		{
 			for (auto &c : l.second)
 			{
-				if (linkedControls.find(c) != linkedControls.end())
+				if (!c->getLinked() || c->getLinked()->front().lock() == c)
 				{
-					continue;
-				}
-				// See if we transfer-bought from an org that is not hostile
-				if (c->tradeState.shipmentsFrom(ECONOMY_IDX) > 0)
-				{
-					switch (c->itemType)
+					// See if we transfer-bought from an org that is not hostile
+					if (c->tradeState.shipmentsFrom(ECONOMY_IDX) > 0)
 					{
-						case TransactionControl::Type::AgentEquipmentCargo:
-						case TransactionControl::Type::VehicleEquipment:
-						case TransactionControl::Type::VehicleAmmo:
-							orgsBuyFrom.insert(c->manufacturer);
-							break;
+						switch (c->itemType)
+						{
+							case TransactionControl::Type::AgentEquipmentCargo:
+							case TransactionControl::Type::VehicleEquipment:
+							case TransactionControl::Type::VehicleAmmo:
+								orgsBuyFrom.insert(c->manufacturer);
+								break;
+						}
 					}
-				}
-				for (auto &l : c->getLinked())
-				{
-					linkedControls.insert(l);
 				}
 			}
 		}
@@ -265,14 +253,15 @@ void BuyAndSellScreen::closeScreen()
 			// If player can ferry themselves then give option
 			if (config().getBool("OpenApoc.NewFeature.AllowManualCargoFerry"))
 			{
-				UString message =
-				    transportationHostile
-				        ? format("%s %s", tr("Hostile organization refuses to carry out the "
-				                             "requested transportation for this company."),
-				                 tr("Proceed?"))
-				        : format("%s %s", tr("No free transport to carry out the requested "
-				                             "transportation detected in the city."),
-				                 tr("Proceed?"));
+				UString message = transportationHostile
+				                      ? format("%s %s",
+				                               tr("Hostile organization refuses to carry out the "
+				                                  "requested transportation for this company."),
+				                               tr("Proceed?"))
+				                      : format("%s %s",
+				                               tr("No free transport to carry out the requested "
+				                                  "transportation detected in the city."),
+				                               tr("Proceed?"));
 				fw().stageQueueCommand(
 				    {StageCmd::Command::PUSH,
 				     mksp<MessageBox>(title, message, MessageBox::ButtonOptions::YesNo,
@@ -283,8 +272,9 @@ void BuyAndSellScreen::closeScreen()
 			else if (!transportationHostile)
 			{
 				// FIXME: Different message maybe? Same for now
-				UString message = format("%s %s", tr("No free transport to carry out the requested "
-				                                     "transportation detected in the city."),
+				UString message = format("%s %s",
+				                         tr("No free transport to carry out the requested "
+				                            "transportation detected in the city."),
 				                         tr("Proceed?"));
 				fw().stageQueueCommand(
 				    {StageCmd::Command::PUSH,
@@ -297,8 +287,9 @@ void BuyAndSellScreen::closeScreen()
 			{
 				fw().stageQueueCommand(
 				    {StageCmd::Command::PUSH,
-				     mksp<MessageBox>(title, tr("Hostile organization refuses to carry out the "
-				                                "requested transportation for this company."),
+				     mksp<MessageBox>(title,
+				                      tr("Hostile organization refuses to carry out the "
+				                         "requested transportation for this company."),
 				                      MessageBox::ButtonOptions::Ok)});
 				return;
 			}
@@ -340,8 +331,9 @@ void BuyAndSellScreen::closeScreen()
 				{
 					for (auto &v : state->vehicles)
 					{
-						if (v.second->owner != o || (!v.second->type->provideFreightCargo &&
-						                             !v.second->type->provideFreightBio) ||
+						if (v.second->owner != o ||
+						    (!v.second->type->provideFreightCargo &&
+						     !v.second->type->provideFreightBio) ||
 						    !v.second->missions.empty())
 						{
 							continue;
@@ -371,11 +363,13 @@ void BuyAndSellScreen::closeScreen()
 			{
 				UString message =
 				    transportationHostile
-				        ? format("%s %s", tr("This hostile organization refuses to carry out the "
-				                             "requested transfer."),
+				        ? format("%s %s",
+				                 tr("This hostile organization refuses to carry out the "
+				                    "requested transfer."),
 				                 tr("Proceed?"))
-				        : format("%s %s", tr("No free transport to carry out the requested "
-				                             "transportation detected in the city."),
+				        : format("%s %s",
+				                 tr("No free transport to carry out the requested "
+				                    "transportation detected in the city."),
 				                 tr("Proceed?"));
 				fw().stageQueueCommand(
 				    {StageCmd::Command::PUSH,
@@ -387,8 +381,9 @@ void BuyAndSellScreen::closeScreen()
 			else if (!transportationHostile)
 			{
 				// FIXME: Different message maybe? Same for now
-				UString message = format("%s %s", tr("No free transport to carry out the requested "
-				                                     "transportation detected in the city."),
+				UString message = format("%s %s",
+				                         tr("No free transport to carry out the requested "
+				                            "transportation detected in the city."),
 				                         tr("Proceed?"));
 				fw().stageQueueCommand(
 				    {StageCmd::Command::PUSH,
@@ -401,8 +396,9 @@ void BuyAndSellScreen::closeScreen()
 			{
 				fw().stageQueueCommand(
 				    {StageCmd::Command::PUSH,
-				     mksp<MessageBox>(title, tr("This hostile organization refuses to carry out "
-				                                "the requested transfer."),
+				     mksp<MessageBox>(title,
+				                      tr("This hostile organization refuses to carry out "
+				                         "the requested transfer."),
 				                      MessageBox::ButtonOptions::Ok)});
 				return;
 			}
@@ -418,146 +414,149 @@ void BuyAndSellScreen::closeScreen()
 void BuyAndSellScreen::executeOrders()
 {
 	auto player = state->getPlayer();
-	std::set<sp<TransactionControl>> linkedControls;
 	for (auto &l : transactionControls)
 	{
 		for (auto &c : l.second)
 		{
-			if (linkedControls.find(c) != linkedControls.end())
+			if (!c->getLinked() || c->getLinked()->front().lock() == c)
 			{
-				continue;
-			}
-			if (c->itemType != TransactionControl::Type::Vehicle &&
-			    state->economy.find(c->itemId) == state->economy.end())
-			{
-				LogError("Economy not found for %s: How are we selling it then!?", c->itemId);
-				continue;
-			}
-
-			int i = 0;
-			auto &economy = state->economy[c->itemId];
-			for (auto &b : state->player_bases)
-			{
-				int order = c->tradeState.shipmentsTotal(i++);
-
-				// Sell
-				if (order > 0)
+				if (c->itemType != TransactionControl::Type::Vehicle &&
+				    state->economy.find(c->itemId) == state->economy.end())
 				{
-					switch (c->itemType)
-					{
-						case TransactionControl::Type::Vehicle:
-						{
-							StateRef<Vehicle> vehicle{state.get(), c->itemId};
-							// Expecting sold vehicle to be parked
-							// Offload agents
-							while (!vehicle->currentAgents.empty())
-							{
-								auto agent = *vehicle->currentAgents.begin();
-								agent->enterBuilding(*state, vehicle->currentBuilding);
-							}
-							// Offload cargo
-							for (auto &c : vehicle->cargo)
-							{
-								vehicle->currentBuilding->cargo.push_back(c);
-							}
-							vehicle->die(*state, true);
-							player->balance += c->price;
-							break;
-						}
-						case TransactionControl::Type::AgentEquipmentBio:
-						{
-							// kill aliens
-							b.second->inventoryAgentEquipment[c->itemId] -= order;
-							break;
-						}
-						case TransactionControl::Type::AgentEquipmentCargo:
-						{
-							economy.currentStock += order;
-							player->balance += order * economy.currentPrice;
+					LogError("Economy not found for %s: How are we selling it then!?", c->itemId);
+					continue;
+				}
 
-							StateRef<AEquipmentType> equipment{state.get(), c->itemId};
-							b.second->inventoryAgentEquipment[c->itemId] -=
-							    order * (equipment->type == AEquipmentType::Type::Ammo
-							                 ? equipment->max_ammo
-							                 : 1);
-							break;
-						}
-						case TransactionControl::Type::VehicleAmmo:
+				int i = 0;
+				auto &economy = state->economy[c->itemId];
+				for (auto &b : state->player_bases)
+				{
+					int order = c->tradeState.shipmentsTotal(i++);
+
+					// Sell
+					if (order > 0)
+					{
+						switch (c->itemType)
 						{
-							economy.currentStock += order;
-							player->balance += order * economy.currentPrice;
-							b.second->inventoryVehicleAmmo[c->itemId] -= order;
-							break;
+							case TransactionControl::Type::Vehicle:
+							{
+								StateRef<Vehicle> vehicle{state.get(), c->itemId};
+								// Expecting sold vehicle to be parked
+								// Offload agents
+								while (!vehicle->currentAgents.empty())
+								{
+									auto agent = *vehicle->currentAgents.begin();
+									agent->enterBuilding(*state, vehicle->currentBuilding);
+								}
+								// Offload cargo
+								for (auto &c : vehicle->cargo)
+								{
+									vehicle->currentBuilding->cargo.push_back(c);
+								}
+								vehicle->die(*state, true);
+								player->balance += c->price;
+								break;
+							}
+							case TransactionControl::Type::AgentEquipmentBio:
+							{
+								// kill aliens
+								b.second->inventoryAgentEquipment[c->itemId] -= order;
+								break;
+							}
+							case TransactionControl::Type::AgentEquipmentCargo:
+							{
+								economy.currentStock += order;
+								player->balance += order * economy.currentPrice;
+								StateRef<AEquipmentType> equipment{state.get(), c->itemId};
+
+								const auto numItemsPerUnit =
+								    equipment->type == AEquipmentType::Type::Ammo
+								        ? equipment->max_ammo
+								        : 1;
+								auto numItems = numItemsPerUnit * order;
+
+								LogAssert(b.second->inventoryAgentEquipment[c->itemId] <=
+								          std::numeric_limits<int>::max());
+								numItems = std::min(
+								    numItems, (int)b.second->inventoryAgentEquipment[c->itemId]);
+
+								b.second->inventoryAgentEquipment[c->itemId] -= numItems;
+								break;
+							}
+							case TransactionControl::Type::VehicleAmmo:
+							{
+								economy.currentStock += order;
+								player->balance += order * economy.currentPrice;
+								b.second->inventoryVehicleAmmo[c->itemId] -= order;
+								break;
+							}
+							case TransactionControl::Type::VehicleEquipment:
+							{
+								economy.currentStock += order;
+								player->balance += order * economy.currentPrice;
+								b.second->inventoryVehicleEquipment[c->itemId] -= order;
+								break;
+							}
+							case TransactionControl::Type::VehicleType:
+							{
+								LogError("How did we manage to sell a vehicle type %s!?",
+								         c->itemId);
+								break;
+							}
 						}
-						case TransactionControl::Type::VehicleEquipment:
+					}
+
+					// Buy
+					else if (order < 0)
+					{
+						auto org = c->manufacturer;
+						if (org->isRelatedTo(player) == Organisation::Relation::Hostile)
 						{
-							economy.currentStock += order;
-							player->balance += order * economy.currentPrice;
-							b.second->inventoryVehicleEquipment[c->itemId] -= order;
-							break;
+							LogError("How the hell is being bought from a hostile org %s?",
+							         c->manufacturerName);
+							continue;
 						}
-						case TransactionControl::Type::VehicleType:
+
+						switch (c->itemType)
 						{
-							LogError("How did we manage to sell a vehicle type %s!?", c->itemId);
-							break;
+							case TransactionControl::Type::Vehicle:
+							{
+								LogError("It should be impossible to buy a particular vehicle %s.",
+								         c->itemId);
+								break;
+							}
+							case TransactionControl::Type::AgentEquipmentBio:
+							{
+								LogError("Alien %s: How are we buying it!?", c->itemId);
+								break;
+							}
+							case TransactionControl::Type::AgentEquipmentCargo:
+							{
+								StateRef<AEquipmentType> equipment{state.get(), c->itemId};
+								org->purchase(*state, b.second->building, equipment, -order);
+								break;
+							}
+							case TransactionControl::Type::VehicleAmmo:
+							{
+								StateRef<VAmmoType> ammo{state.get(), c->itemId};
+								org->purchase(*state, b.second->building, ammo, -order);
+								break;
+							}
+							case TransactionControl::Type::VehicleEquipment:
+							{
+								StateRef<VEquipmentType> equipment{state.get(), c->itemId};
+								org->purchase(*state, b.second->building, equipment, -order);
+								break;
+							}
+							case TransactionControl::Type::VehicleType:
+							{
+								StateRef<VehicleType> vehicle{state.get(), c->itemId};
+								org->purchase(*state, b.second->building, vehicle, -order);
+								break;
+							}
 						}
 					}
 				}
-
-				// Buy
-				else if (order < 0)
-				{
-					auto org = c->manufacturer;
-					if (org->isRelatedTo(player) == Organisation::Relation::Hostile)
-					{
-						LogError("How the hell is being bought from a hostile org %s?",
-						         c->manufacturerName);
-						continue;
-					}
-
-					switch (c->itemType)
-					{
-						case TransactionControl::Type::Vehicle:
-						{
-							LogError("It should be impossible to buy a particular vehicle %s.",
-							         c->itemId);
-							break;
-						}
-						case TransactionControl::Type::AgentEquipmentBio:
-						{
-							LogError("Alien %s: How are we buying it!?", c->itemId);
-							break;
-						}
-						case TransactionControl::Type::AgentEquipmentCargo:
-						{
-							StateRef<AEquipmentType> equipment{state.get(), c->itemId};
-							org->purchase(*state, b.second->building, equipment, -order);
-							break;
-						}
-						case TransactionControl::Type::VehicleAmmo:
-						{
-							StateRef<VAmmoType> ammo{state.get(), c->itemId};
-							org->purchase(*state, b.second->building, ammo, -order);
-							break;
-						}
-						case TransactionControl::Type::VehicleEquipment:
-						{
-							StateRef<VEquipmentType> equipment{state.get(), c->itemId};
-							org->purchase(*state, b.second->building, equipment, -order);
-							break;
-						}
-						case TransactionControl::Type::VehicleType:
-						{
-							StateRef<VehicleType> vehicle{state.get(), c->itemId};
-							org->purchase(*state, b.second->building, vehicle, -order);
-							break;
-						}
-					}
-				}
-			}
-			for (auto &l : c->getLinked())
-			{
-				linkedControls.insert(l);
 			}
 		}
 	}

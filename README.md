@@ -1,44 +1,20 @@
 # OpenApocalypse [![Tweet](https://img.shields.io/twitter/url/http/shields.io.svg?style=social)](https://twitter.com/intent/tweet?text=Are%20you%20a%20fan%20of%20X-Com%20Apocalypse?%20OpenApoc%20is%20a%20clone%20of%20this%20great%20game%20-%20contribute!%20https://github.com/OpenApoc/OpenApoc&hashtags=games,openapoc,xcom)
 
 > OpenApoc is an open-source re-implementation of the original [X-COM: Apocalypse](https://www.ufopaedia.org/index.php/Apocalypse), that requires the original files to run, licensed under the MIT and written in C++ / SDL2. It was originally founded by PmProg in July 2014, and has since grown in [community](https://www.ufopaedia.org/index.php/Credits_(OpenApoc)).
-<br>
-<p align="center">
-<a href="https://travis-ci.org/OpenApoc/OpenApoc">
-<img src="https://img.shields.io/travis/OpenApoc/OpenApoc.svg?label=LinuxTravis" alt="Linux Build Status">
-</a>
-<a href="https://ci.appveyor.com/project/OpenApoc/openapoc">
-<img src="https://img.shields.io/appveyor/ci/OpenApoc/openapoc.svg?label=WindowsAppveyor" alt="Windows Build Status">
-</a>
-<a href="https://github.com/openapoc/openapoc/issues">
-<img src="https://img.shields.io/github/issues/openapoc/openapoc.svg" alt="Openapoc issues">
-</a>
-<a href="https://trello.com/b/lX5Y3DwR/openapoc">
-<img src="https://img.shields.io/badge/See%20our-Trello%20TO--DO%20list-blue.svg" alt="See our Trello TO-DO list for more info">
-</a>
-<a href="https://www.transifex.com/x-com-apocalypse/apocalypse/">
-<img src="https://img.shields.io/badge/Translate-Openapoc-blue.svg" alt="Translate OpenApoc to your language">
-</a>
-<a href="https://github.com/OpenApoc/OpenApoc/blob/master/LICENSE">
-<img src="https://img.shields.io/badge/license-MIT-red.svg" alt="OpenApoc MIT license">
-</a><br>
-<a href="http://openapoc.org">
-<img src="https://img.shields.io/badge/Visit%20our-forum-orange.svg" alt="Openapoc forum">
-</a>
-<a href="http://webchat.freenode.net/?channels=openapoc">
-<img src="https://img.shields.io/badge/IRC-devs%20chat-brightgreen.svg" alt="Openapoc IRC chat">
-</a>
-<a href="https://discord.gg/d6DAHEb">
-<img src="https://img.shields.io/discord/142798944970211328.svg?label=discord" alt="Openapoc Discord">
-</a>
-<a href="https://fb.com/openapoc">
-<img src="https://img.shields.io/badge/Join%20our-Facebook-blue.svg" alt="Openapoc Facebook">
-</a>
-<a href="https://vk.com/openapoc">
-<img src="https://img.shields.io/badge/Join%20our-Vkontakte-blue.svg" alt="Openapoc Vkontakte">
-</a>
-</p>
 
-<p align="center"><img src="https://i.imgur.com/XxudxVj.jpg" align="center" /></p>
+[![Linux Build Status](https://img.shields.io/travis/OpenApoc/OpenApoc.svg?label=LinuxTravis)](https://travis-ci.org/OpenApoc/OpenApoc)
+[![Windows Build Status](https://img.shields.io/appveyor/ci/OpenApoc/openapoc.svg?label=WindowsAppveyor)](https://ci.appveyor.com/project/OpenApoc/openapoc)
+[![Openapoc issues](https://img.shields.io/github/issues/openapoc/openapoc.svg)](https://github.com/openapoc/openapoc/issues)
+[![See our Trello TO-DO list for more info](https://img.shields.io/badge/See%20our-Trello%20TO--DO%20list-blue.svg)](https://trello.com/b/lX5Y3DwR/openapoc)
+[![Translate OpenApoc to your language](https://img.shields.io/badge/Translate-Openapoc-blue.svg)](https://www.transifex.com/x-com-apocalypse/apocalypse/)
+[![OpenApoc MIT license](https://img.shields.io/badge/license-MIT-red.svg)](https://github.com/OpenApoc/OpenApoc/blob/master/LICENSE)\
+[![Openapoc forum](https://img.shields.io/badge/Visit%20our-forum-orange.svg)](http://openapoc.org)
+[![Openapoc IRC chat](https://img.shields.io/badge/IRC-devs%20chat-brightgreen.svg)](http://webchat.freenode.net/?channels=openapoc)
+[![Openapoc Discord](https://img.shields.io/discord/142798944970211328.svg?label=discord)](https://discord.gg/d6DAHEb)
+[![Openapoc Facebook](https://img.shields.io/badge/Join%20our-Facebook-blue.svg)](https://fb.com/openapoc)
+[![Openapoc Vkontakte](https://img.shields.io/badge/Join%20our-Vkontakte-blue.svg)](https://vk.com/openapoc)
+
+<p align="center"><img src="https://i.imgur.com/XxudxVj.jpg"/></p>
 
 ## Table of Contents
 
@@ -116,6 +92,7 @@ The following libraries are also used, but are shipped as submodules in the repo
 * [GLM](https://glm.g-truc.net) - Math library.
 * [libsmacker](https://sourceforge.net/projects/libsmacker/) - Decoder for .smk video files.
 * [lodepng](https://github.com/lvandeve/lodepng) - Reading/writing PNG image files.
+* [Lua](https://www.lua.org/) - Scripting language.
 * [miniz](https://github.com/richgel999/miniz) - Zlib-comptible compression library.
 * [physfs](https://icculus.org/physfs/) - Library for reading data from .iso files or directory trees (Note: We use a patched version, available on [GitHub](https://github.com/JonnyH/physfs-hg-import/tree/fix-iso) - required to read the .iso files we use).
 * [pugixml](https://pugixml.org) - XML library used for reading/writing the game data files.
@@ -127,14 +104,30 @@ The following libraries are also used, but are shipped as submodules in the repo
 * If you are using the GitHub client for Windows, the submodules should already be setup at first checkout. If not using the github client, or if the submodules have been updated, run the following commands in the 'git shell' from the root of the OpenApoc repository. This should reset the submodule checkouts to the latest versions (NOTE: This will overwrite any changes to code in the dependencies/ directory).
 
 ```cmd
-git submodule init
-git submodule update -f
+git submodule update --init --recursive
 ```
 
-* All the other dependencies (Boost, SDL2) are provided automatically by nuget packages, and Visual Studio should automatically download and install these at the first build.
+* All the other dependencies (Boost, SDL2) need to be supplied separately. Install [Vcpkg](https://github.com/Microsoft/vcpkg) and run the following command:
+
+```cmd
+vcpkg install sdl2 boost-locale boost-program-options boost-uuid boost-crc qt5-base
+```
+
 * Copy the original XCom:Apocalypse .iso file into the "data/" directory. This could also be a directory containing all the extracted files from the CD, and it should be named the same (IE the directory should be data/cd.iso/). This is used during the build to extract some data tables.
-* Open openapoc.sln in Visual Studio.
-* Build (Release/Debug x86/x64 should all work).
+* Open the Git directory in Visual Studio (if you don't have an Open Folder option, generate a project from CMake).
+* Visual Studio should automatically detect and configure CMake appropriately. To add your Vcpkg dependencies, edit your CMake Settings file and add:
+
+```json
+"variables": [
+    {
+        "name": "CMAKE_TOOLCHAIN_FILE",
+        "value": "<path to vcpkg>\\scripts\\buildsystems\\vcpkg.cmake"
+    }
+]
+```
+
+* If you get errors, clear your cache from the CMake menu and generate again.
+* Build (Release/Debug x86/x64 should all work). Release is recommended as Debug is very slow.
 * When running from the Visual Studio UI, the working directory is set to the root of the project, so the data folder should already be in the right place. If you want to run outside of Visual Studio, you need to copy the whole 'data' folder (including the cd.iso file) into the folder openapoc.exe resides in.
 
 ### Building on Linux
@@ -144,24 +137,23 @@ git submodule update -f
 * On Ubuntu, install the following packages:
 
 ```sh
-sudo apt-get install libsdl2-dev cmake build-essential git libunwind8-dev libboost-locale-dev libboost-filesystem-dev libboost-system-dev libboost-program-options-dev
+sudo apt-get install libsdl2-dev cmake build-essential git libunwind8-dev libboost-locale-dev libboost-filesystem-dev libboost-program-options-dev qtbase5-dev
 ```
 
 * On Mageia, install the following packages as root:
 
 ```sh
-urpmi "cmake(sdl2)" libstdc++-static-devel boost-devel boost unwind-devel task-c++-devel cmake git
+urpmi "cmake(sdl2)" libstdc++-static-devel boost-devel boost unwind-devel task-c++-devel cmake git qtbase5-devel
 ```
 
 * Checkout OpenApoc from GitHub.
 * Fetch the dependencies from git with the following terminal command (run from the just-created OpenApoc folder).
 
 ```sh
-git submodule init
-git submodule update
+git submodule update --init --recursive
 ```
 
-* Copy the cd.iso file to the 'data' directory under the repository root (Note - despite dosbox having good linux support, the steam version of X-Com Apocalypse refuses to install in steam for linux - you may need to snatch the cd.iso file off a windows steam install).
+* Copy the cd.iso file to the 'data' directory under the repository root (Note - despite dosbox having good linux support, the steam version of X-Com Apocalypse will only install if Steam Play is enabled).
 
 ```sh
 cp /path/to/cd.iso data/

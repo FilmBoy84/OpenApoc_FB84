@@ -376,8 +376,8 @@ void Tile::updateBattlescapeParameters()
 				continue;
 			}
 			height = std::max(height, (float)mp->type->height);
-			if ((mp->type->floor || o->getType() == TileObject::Type::Feature) &&
-			    !mp->type->gravlift)
+			if (mp->type->floor ||
+			    (o->getType() == TileObject::Type::Feature && !mp->type->gravlift))
 			{
 				if (!supportProviderForItems ||
 				    supportProviderForItems->type->height < mp->type->height)
@@ -422,7 +422,7 @@ void Tile::updateBattlescapeParameters()
 	{
 		// check if tile below is full height
 		auto t = map.getTile(position.x, position.y, position.z - 1);
-		// Floating point precision is lacking somtimes so even though we have to compare with
+		// Floating point precision is lacking sometimes so even though we have to compare with
 		// 0.975, we do this
 		canStand = t->solidGround && t->height >= 0.9625f;
 		if (canStand)
@@ -511,9 +511,8 @@ sp<TileObjectBattleUnit> Tile::getUnitIfPresent(bool onlyConscious, bool mustOcc
 			auto unitTileObject = std::static_pointer_cast<TileObjectBattleUnit>(o);
 			auto unit = unitTileObject->getUnit();
 			if ((onlyConscious && !unit->isConscious()) || (exceptThis == unitTileObject) ||
-			    (mustOccupy &&
-			     unitTileObject->occupiedTiles.find(position) ==
-			         unitTileObject->occupiedTiles.end()) ||
+			    (mustOccupy && unitTileObject->occupiedTiles.find(position) ==
+			                       unitTileObject->occupiedTiles.end()) ||
 			    (mustBeStatic && !unit->isStatic()) || (onlyLarge && !unit->isLarge()))
 			{
 				continue;
@@ -564,9 +563,8 @@ std::list<sp<BattleUnit>> Tile::getUnits(bool onlyConscious, bool mustOccupy, bo
 			auto unitTileObject = std::static_pointer_cast<TileObjectBattleUnit>(o);
 			auto unit = unitTileObject->getUnit();
 			if ((onlyConscious && !unit->isConscious()) || (exceptThis == unitTileObject) ||
-			    (mustOccupy &&
-			     unitTileObject->occupiedTiles.find(position) ==
-			         unitTileObject->occupiedTiles.end()) ||
+			    (mustOccupy && unitTileObject->occupiedTiles.find(position) ==
+			                       unitTileObject->occupiedTiles.end()) ||
 			    (mustBeStatic && !unit->isStatic()) || (onlyLarge && !unit->isLarge()))
 			{
 				continue;

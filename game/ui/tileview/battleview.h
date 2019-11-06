@@ -207,7 +207,7 @@ class BattleView : public BattleTileView
 	void debugVortex();
 	void debugShot(Vec3<float> velocity);
 
-	// Unit orers
+	// Unit orders
 
 	void orderMove(Vec3<int> target, bool strafe = false, bool demandGiveWay = false);
 	void orderJump(Vec3<int> target, BodyState bodyState = BodyState::Standing);
@@ -248,6 +248,8 @@ class BattleView : public BattleTileView
 	void setUpdateSpeed(BattleUpdateSpeed updateSpeed);
 	void zoomAt(Vec3<int> location);
 	void zoomLastEvent();
+
+	void setSelectedTab(sp<Form> tabPtr);
 };
 
 }; // namespace OpenApoc

@@ -373,7 +373,7 @@ void UfopaediaCategoryView::setFormStats()
 							statsLabels[row]->setText(tr("Accuracy"));
 							statsValues[row++]->setText(format("%d%%", ref->accuracy));
 							statsLabels[row]->setText(tr("Range"));
-							statsValues[row++]->setText(format("%dm", ref->range));
+							statsValues[row++]->setText(format("%dm", ref->getRangeInMetres()));
 							statsLabels[row]->setText(tr("Fire Rate"));
 							statsValues[row++]->setText(format(
 							    "%.2f r/s", (float)TICKS_PER_SECOND / (float)ref->fire_delay));
@@ -460,7 +460,7 @@ void UfopaediaCategoryView::setFormStats()
 					else if (ref->type == AEquipmentType::Type::Weapon &&
 					         ref->ammo_types.size() == 1)
 					{
-						auto ammoType = ref->ammo_types.front();
+						const auto &ammoType = *ref->ammo_types.begin();
 						statsLabels[row]->setText(tr("Power"));
 						statsValues[row++]->setText(Strings::fromInteger(ammoType->damage));
 						statsLabels[row]->setText(tr("Damage Type"));

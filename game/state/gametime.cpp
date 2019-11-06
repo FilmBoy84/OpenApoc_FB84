@@ -4,9 +4,6 @@
 #include <locale>
 #include <sstream>
 
-// Disable automatic #pragma linking for boost - only enabled in msvc and that should provide boost
-// symbols as part of the module that uses it
-#define BOOST_ALL_NO_LIB
 #include <boost/date_time.hpp>
 
 // for my sake
@@ -204,4 +201,4 @@ void GameTime::addTicks(uint64_t ticks)
 }
 
 GameTime GameTime::midday() { return GameTime(TICKS_PER_HOUR * 12); }
-}
+} // namespace OpenApoc

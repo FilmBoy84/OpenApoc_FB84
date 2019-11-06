@@ -40,7 +40,7 @@ void BattlePreStart::displayAgent(sp<Agent> agent)
 	}
 
 	AgentSheet(formAgentStats)
-	    .display(agent, bigUnitRanks, state->current_battle->mode == Battle::Mode::TurnBased);
+	    .display(*agent, bigUnitRanks, state->current_battle->mode == Battle::Mode::TurnBased);
 	formAgentStats->setVisible(true);
 
 	auto rHand = agent->getFirstItemInSlot(EquipmentSlotType::RightHand);
@@ -55,23 +55,21 @@ BattlePreStart::BattlePreStart(sp<GameState> state)
 {
 
 	menuform->findControlTyped<GraphicButton>("BUTTON_EQUIP")
-	    ->addCallback(FormEventType::ButtonClick, [this, state](Event *) {
-
+	    ->addCallback(FormEventType::ButtonClick, [state](Event *) {
 		    fw().stageQueueCommand({StageCmd::Command::PUSH, mksp<AEquipScreen>(state)});
-		});
+	    });
 	formAgentStats = menuform->findControlTyped<Form>("AGENT_STATS_VIEW");
 	formAgentStats->setVisible(false);
 	menuform->findControlTyped<GraphicButton>("BUTTON_OK")
 	    ->addCallback(FormEventType::ButtonClick, [this, state](Event *) {
-
 		    auto gameState = this->state;
 
-		    fw().stageQueueCommand(
-		        {StageCmd::Command::PUSH,
-		         mksp<LoadingScreen>(gameState, enterBattle(gameState),
-		                             [gameState]() { return mksp<BattleView>(gameState); },
-		                             this->state->battle_common_image_list->loadingImage, 1)});
-		});
+		    fw().stageQueueCommand({StageCmd::Command::PUSH,
+		                            mksp<LoadingScreen>(
+		                                gameState, enterBattle(gameState),
+		                                [gameState]() { return mksp<BattleView>(gameState); },
+		                                this->state->battle_common_image_list->loadingImage, 1)});
+	    });
 
 	for (int i = 12; i <= 18; i++)
 	{
@@ -101,11 +99,12 @@ void BattlePreStart::updateAgents()
 		{
 			continue;
 		}
-		agents.insert(mksp<AgentIcon>(
-		    u.second->agent, ControlGenerator::createAgentControl(*state, u.second->agent,
-		                                                          UnitSelectionState::Unselected),
-		    ControlGenerator::createAgentControl(*state, u.second->agent,
-		                                         UnitSelectionState::FirstSelected)));
+		agents.insert(
+		    mksp<AgentIcon>(u.second->agent,
+		                    ControlGenerator::createAgentControl(*state, u.second->agent,
+		                                                         UnitSelectionState::Unselected),
+		                    ControlGenerator::createAgentControl(
+		                        *state, u.second->agent, UnitSelectionState::FirstSelected)));
 	}
 
 	// Position agent controls

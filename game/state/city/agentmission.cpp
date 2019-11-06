@@ -143,12 +143,15 @@ float AgentTileHelper::getDistance(Vec3<float> from, Vec3<float> toStart, Vec3<f
 {
 	auto diffStart = toStart - from;
 	auto diffEnd = toEnd - from - Vec3<float>{1.0f, 1.0f, 1.0f};
-	auto xDiff = from.x >= toStart.x && from.x < toEnd.x ? 0.0f : std::min(std::abs(diffStart.x),
-	                                                                       std::abs(diffEnd.x));
-	auto yDiff = from.y >= toStart.y && from.y < toEnd.y ? 0.0f : std::min(std::abs(diffStart.y),
-	                                                                       std::abs(diffEnd.y));
-	auto zDiff = from.z >= toStart.z && from.z < toEnd.z ? 0.0f : std::min(std::abs(diffStart.z),
-	                                                                       std::abs(diffEnd.z));
+	auto xDiff = from.x >= toStart.x && from.x < toEnd.x
+	                 ? 0.0f
+	                 : std::min(std::abs(diffStart.x), std::abs(diffEnd.x));
+	auto yDiff = from.y >= toStart.y && from.y < toEnd.y
+	                 ? 0.0f
+	                 : std::min(std::abs(diffStart.y), std::abs(diffEnd.y));
+	auto zDiff = from.z >= toStart.z && from.z < toEnd.z
+	                 ? 0.0f
+	                 : std::min(std::abs(diffStart.z), std::abs(diffEnd.z));
 	return xDiff + yDiff + zDiff;
 }
 
@@ -240,11 +243,23 @@ AgentMission *AgentMission::awaitPickup(GameState &, Agent &, StateRef<Building>
 	return mission;
 }
 
-AgentMission *AgentMission::teleport(GameState &state, Agent &a, StateRef<Building> b)
+AgentMission *AgentMission::teleport(GameState &state [[maybe_unused]], Agent &a [[maybe_unused]],
+                                     StateRef<Building> b)
 {
 	auto *mission = new AgentMission();
 	mission->type = MissionType::Teleport;
 	mission->targetBuilding = b;
+	return mission;
+}
+
+AgentMission *AgentMission::investigateBuilding(GameState &, Agent &a, StateRef<Building> target,
+                                                bool allowTeleporter, bool allowTaxi)
+{
+	auto *mission = new AgentMission();
+	mission->type = MissionType::InvestigateBuilding;
+	mission->targetBuilding = target;
+	mission->allowTeleporter = allowTeleporter && a.type->role == AgentType::Role::Soldier;
+	mission->allowTaxi = allowTaxi || a.type->role != AgentType::Role::Soldier;
 	return mission;
 }
 
@@ -269,6 +284,7 @@ bool AgentMission::getNextDestination(GameState &state, Agent &a, Vec3<float> &d
 	switch (this->type)
 	{
 		case MissionType::GotoBuilding:
+		case MissionType::InvestigateBuilding:
 		{
 			return advanceAlongPath(state, a, destPos);
 		}
@@ -291,6 +307,15 @@ void AgentMission::update(GameState &state, Agent &a, unsigned int ticks, bool f
 	switch (this->type)
 	{
 		case MissionType::GotoBuilding:
+			return;
+		case MissionType::InvestigateBuilding:
+		{
+			if (finished && this->targetBuilding->detected && a.owner == state.getPlayer())
+			{
+				this->targetBuilding->decreasePendingInvestigatorCount(state);
+			}
+			return;
+		}
 		case MissionType::RestartNextMission:
 			return;
 		case MissionType::AwaitPickup:
@@ -331,6 +356,7 @@ bool AgentMission::isFinishedInternal(GameState &, Agent &a)
 	{
 		case MissionType::GotoBuilding:
 		case MissionType::AwaitPickup:
+		case MissionType::InvestigateBuilding:
 			return this->targetBuilding == a.currentBuilding;
 		case MissionType::Snooze:
 			return this->timeToSnooze == 0;
@@ -348,6 +374,7 @@ void AgentMission::start(GameState &state, Agent &a)
 	switch (this->type)
 	{
 		case MissionType::GotoBuilding:
+		case MissionType::InvestigateBuilding:
 		{
 			// Already there?
 			if ((Vec3<int>)a.position == targetBuilding->crewQuarters)
@@ -398,7 +425,7 @@ void AgentMission::start(GameState &state, Agent &a)
 					}
 					else
 					{
-						// FIXME: mplement agent pathing to closest building when in the field and
+						// FIXME: Implement agent pathing to closest building when in the field and
 						// unable to path
 						LogWarning("Implement agent pathing to closest building when in the field "
 						           "and unable to path to "
@@ -448,7 +475,7 @@ void AgentMission::start(GameState &state, Agent &a)
 	}
 }
 
-void AgentMission::setPathTo(GameState &state, Agent &a, StateRef<Building> b)
+void AgentMission::setPathTo(GameState &state [[maybe_unused]], Agent &a, StateRef<Building> b)
 {
 	this->currentPlannedPath.clear();
 	auto &map = *a.city->map;
@@ -513,9 +540,9 @@ bool AgentMission::advanceAlongPath(GameState &state, Agent &a, Vec3<float> &des
 	}
 
 	// See if we can make a shortcut
-	// When ordering move to vehidle already on the move, we can have a situation
+	// When ordering move to vehicle already on the move, we can have a situation
 	// where going directly to 2nd step in the path is faster than going to the first
-	// In this case, we should skip unnesecary steps
+	// In this case, we should skip unnecessary steps
 	auto it = ++currentPlannedPath.begin();
 	// Start with position after next
 	// If next position has a node and we can go directly to that node
@@ -544,6 +571,7 @@ UString AgentMission::getName()
 	    {MissionType::AwaitPickup, "AwaitPickup"},
 	    {MissionType::RestartNextMission, "RestartNextMission"},
 	    {MissionType::Teleport, "Teleport"},
+	    {MissionType::InvestigateBuilding, "InvestigateBuilding"},
 	};
 	UString name = "UNKNOWN";
 	const auto it = TypeMap.find(this->type);
@@ -552,6 +580,7 @@ UString AgentMission::getName()
 	switch (this->type)
 	{
 		case MissionType::GotoBuilding:
+		case MissionType::InvestigateBuilding:
 			name += " " + this->targetBuilding.id;
 			break;
 		case MissionType::Snooze:

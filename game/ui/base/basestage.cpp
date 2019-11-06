@@ -29,7 +29,7 @@ void BaseStage::changeBase(sp<Base> newBase)
 
 void BaseStage::refreshView()
 {
-	auto viewImage = drawMiniBase(state->current_base, viewHighlight, viewFacility);
+	auto viewImage = drawMiniBase(*state->current_base, viewHighlight, viewFacility);
 	currentView->setImage(viewImage);
 	currentView->setDepressedImage(viewImage);
 }
@@ -57,7 +57,7 @@ void BaseStage::begin()
 			currentView = view;
 		}
 		view->setData(viewBase);
-		auto viewImage = drawMiniBase(viewBase, viewHighlight, viewFacility);
+		auto viewImage = drawMiniBase(*viewBase, viewHighlight, viewFacility);
 		view->setImage(viewImage);
 		view->setDepressedImage(viewImage);
 		wp<GraphicButton> weakView(view);
@@ -92,7 +92,7 @@ void BaseStage::render()
 		auto viewBase = currentView->getData<Base>();
 		if (state->current_base == viewBase)
 		{
-			Vec2<int> pos = form->Location + currentView->Location - 2;
+			Vec2<int> pos = currentView->getLocationOnScreen() - 2;
 			Vec2<int> size = currentView->Size + 4;
 			fw().renderer->drawRect(pos, size, COLOUR_RED);
 		}

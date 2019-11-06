@@ -5,7 +5,7 @@
 namespace OpenApoc
 {
 
-UString BattleUnitImagePack::getImagePackPath() { return fw().getDataDir() + "/imagepacks"; }
+UString BattleUnitImagePack::getImagePackPath() { return "/imagepacks"; }
 
 sp<BattleUnitImagePack> BattleUnitImagePack::get(const GameState &state, const UString &id)
 {
@@ -51,4 +51,4 @@ const UString BattleUnitImagePack::getNameFromID(UString id)
 	LogError("Invalid BattleUnitImagePack ID %s", id);
 	return emptyString;
 }
-}
+} // namespace OpenApoc

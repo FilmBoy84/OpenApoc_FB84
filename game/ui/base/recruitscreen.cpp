@@ -43,7 +43,7 @@ static const std::map<AgentType::Role, int> fireCost = {
     {AgentType::Role::BioChemist, FIRE_COST_BIO},
     {AgentType::Role::Physicist, FIRE_COST_PHYSIC},
     {AgentType::Role::Engineer, FIRE_COST_ENGI}};
-}
+} // namespace
 
 RecruitScreen::RecruitScreen(sp<GameState> state)
     : BaseStage(state), bigUnitRanks(getBigUnitRanks())
@@ -59,7 +59,8 @@ RecruitScreen::RecruitScreen(sp<GameState> state)
 	onHover = [this](FormsEvent *e) {
 		auto list = std::static_pointer_cast<ListBox>(e->forms().RaisedBy);
 		auto agent = list->getHoveredData<Agent>();
-		displayAgentStats(agent);
+		if (agent)
+			displayAgentStats(*agent);
 	};
 
 	form->findControlTyped<ListBox>("LIST1")->addCallback(FormEventType::ListBoxChangeHover,
@@ -156,23 +157,29 @@ void RecruitScreen::populateAgentList()
 	}
 
 	auto player = state->getPlayer();
+	auto list = form->findControlTyped<ListBox>("LIST2");
 
 	// Populate list of agents
 	for (auto &a : state->agents)
 	{
+		UnitSkillState skill = UnitSkillState::Vertical;
+		if (a.second->type->role == AgentType::Role::Soldier)
+			skill = UnitSkillState::Hidden;
 		if (a.second->owner == player)
 		{
 			// Need to be able to strip agent
 			if (a.second->currentBuilding == a.second->homeBuilding)
 			{
 				agentLists[bases[a.second->homeBuilding->base.id]].push_back(
-				    ControlGenerator::createLargeAgentControl(*state, a.second));
+				    ControlGenerator::createLargeAgentControl(*state, a.second, list->Size.x,
+				                                              skill));
 			}
 		}
 		else if (a.second->owner->hirableAgentTypes.find(a.second->type) !=
 		         a.second->owner->hirableAgentTypes.end())
 		{
-			agentLists[8].push_back(ControlGenerator::createLargeAgentControl(*state, a.second));
+			agentLists[8].push_back(
+			    ControlGenerator::createLargeAgentControl(*state, a.second, list->Size.x, skill));
 		}
 	}
 }
@@ -355,7 +362,7 @@ void RecruitScreen::fillBaseBar(int percent)
 	auto progressImage = mksp<RGBImage>(facilityBar->Size);
 	int redHeight = progressImage->size.y * std::min(100, percent) / 100;
 	{
-		// FIXME: For some reason, there's no border here like in the research sceen, so we
+		// FIXME: For some reason, there's no border here like in the research screen, so we
 		// have to make one manually, probably there's a better way
 		RGBImageLock l(progressImage);
 		for (int x = 0; x < 2; x++)
@@ -376,14 +383,10 @@ void RecruitScreen::fillBaseBar(int percent)
  * Display stats of an agent
  * @agent - the agent
  */
-void RecruitScreen::displayAgentStats(sp<Agent> agent)
+void RecruitScreen::displayAgentStats(const Agent &agent)
 {
-	if (!agent)
-	{
-		return;
-	}
 
-	switch (agent->type->role)
+	switch (agent.type->role)
 	{
 		case AgentType::Role::Soldier:
 			AgentSheet(formAgentStats).display(agent, bigUnitRanks, false);
@@ -398,17 +401,17 @@ void RecruitScreen::displayAgentStats(sp<Agent> agent)
 }
 
 /**
- * Fills the form of personel's statistics. Such as skill and that's all.
+ * Fills the form of personnel's statistics. Such as skill and that's all.
  * @agent - an agent whose stats will be displayed
  * @formPersonnelStats - a form of stats
  */
-void RecruitScreen::personnelSheet(sp<Agent> agent, sp<Form> formPersonnelStats)
+void RecruitScreen::personnelSheet(const Agent &agent, sp<Form> formPersonnelStats)
 {
-	formPersonnelStats->findControlTyped<Label>("AGENT_NAME")->setText(agent->name);
+	formPersonnelStats->findControlTyped<Label>("AGENT_NAME")->setText(agent.name);
 	formPersonnelStats->findControlTyped<Graphic>("SELECTED_PORTRAIT")
-	    ->setImage(agent->getPortrait().photo);
+	    ->setImage(agent.getPortrait().photo);
 	formPersonnelStats->findControlTyped<Label>("VALUE_SKILL")
-	    ->setText(format(tr("%d"), agent->getSkill()));
+	    ->setText(format("%d", agent.getSkill()));
 }
 
 /**
@@ -481,9 +484,9 @@ void RecruitScreen::attemptCloseScreen()
 		}
 		fw().stageQueueCommand(
 		    {StageCmd::Command::PUSH,
-		     mksp<MessageBox>(tr("Confirm Orders"), message, MessageBox::ButtonOptions::YesNoCancel,
-		                      [this] { this->closeScreen(true); },
-		                      [this] { this->closeScreen(); })});
+		     mksp<MessageBox>(
+		         tr("Confirm Orders"), message, MessageBox::ButtonOptions::YesNoCancel,
+		         [this] { this->closeScreen(true); }, [this] { this->closeScreen(); })});
 	}
 	else
 	{
@@ -647,7 +650,7 @@ void RecruitScreen::closeScreen(bool confirmed)
 		return;
 	}
 
-	// Sufficnient funds and space, execute
+	// Sufficient funds and space, execute
 	executeOrders();
 	fw().stageQueueCommand({StageCmd::Command::POP});
 }
@@ -669,7 +672,7 @@ void RecruitScreen::eventOccurred(Event *e)
 
 	if (e->type() == EVENT_MOUSE_MOVE)
 	{
-		arrow->setVisible(!(e->mouse().X > form->Location.x + arrow->Location.x));
+		arrow->setVisible(!(e->mouse().X > arrow->getLocationOnScreen().x));
 	}
 
 	if (e->type() == EVENT_KEY_DOWN)

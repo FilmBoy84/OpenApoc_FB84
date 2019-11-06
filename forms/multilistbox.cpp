@@ -28,7 +28,7 @@ MultilistBox::MultilistBox(sp<ScrollBar> ExternalScrollBar)
 		fw().renderer->drawRect(c->Location, c->SelectionSize, this->SelectedColour);
 	};
 
-	setFuncPreRender([this](sp<Control> c) {
+	setFuncPreRender([this](sp<Control> c [[maybe_unused]]) {
 		if (isDirty() && !scroller)
 		{
 			// MultilistBox without scroller should be rendered fully
@@ -79,7 +79,7 @@ void MultilistBox::onRender()
 		resolveLocation();
 	}
 
-	Vec2<int> controlOffset;
+	Vec2<int> controlOffset = {0, 0};
 
 	for (auto c = Controls.begin(); c != Controls.end(); c++)
 	{
@@ -563,4 +563,4 @@ void MultilistBox::setFuncSelectionItemRender(std::function<void(sp<Control>)> f
 	funcSelectionItemRender = func;
 	setDirty();
 }
-}
+} // namespace OpenApoc

@@ -6,7 +6,6 @@
 #include "forms/listbox.h"
 #include "forms/radiobutton.h"
 #include "forms/scrollbar.h"
-#include "forms/transactioncontrol.h"
 #include "forms/ui.h"
 #include "framework/event.h"
 #include "framework/framework.h"
@@ -24,7 +23,9 @@
 #include "game/state/shared/organisation.h"
 #include "game/ui/general/aequipmentsheet.h"
 #include "game/ui/general/messagebox.h"
+#include "game/ui/general/transactioncontrol.h"
 #include "game/ui/general/vehiclesheet.h"
+#include <array>
 
 namespace OpenApoc
 {
@@ -231,9 +232,12 @@ void TransactionScreen::populateControlsVehicle()
 void TransactionScreen::populateControlsAgentEquipment()
 {
 	static const std::list<AEquipmentType::Type> agTypes = {
-	    AEquipmentType::Type::Grenade, AEquipmentType::Type::Weapon,
+	    AEquipmentType::Type::Grenade,
+	    AEquipmentType::Type::Weapon,
 	    // Ammo means everything else
-	    AEquipmentType::Type::Ammo, AEquipmentType::Type::Armor, AEquipmentType::Type::Loot,
+	    AEquipmentType::Type::Ammo,
+	    AEquipmentType::Type::Armor,
+	    AEquipmentType::Type::Loot,
 	};
 	int leftIndex = getLeftIndex();
 	int rightIndex = getRightIndex();
@@ -289,12 +293,9 @@ void TransactionScreen::populateControlsAgentEquipment()
 						transactionControls[type].push_back(controlAmmo);
 
 						// Link to already existing
-						for (auto &c : transactionControls[type])
+						if (auto c = findControlById(type, ammo.id))
 						{
-							if (c->itemId == ammo.id)
-							{
-								c->link(controlAmmo);
-							}
+							TransactionControl::link(c, controlAmmo);
 						}
 					}
 				}
@@ -307,7 +308,6 @@ void TransactionScreen::populateControlsVehicleEquipment()
 {
 	bool flying = type == Type::FlyingEquipment;
 	auto otherType = flying ? Type::GroundEquipment : Type::FlyingEquipment;
-	bool otherPopulated = transactionControls.find(otherType) != transactionControls.end();
 	static const std::list<EquipmentSlotType> vehTypes = {EquipmentSlotType::VehicleWeapon,
 	                                                      EquipmentSlotType::VehicleGeneral,
 	                                                      EquipmentSlotType::VehicleEngine};
@@ -315,9 +315,10 @@ void TransactionScreen::populateControlsVehicleEquipment()
 	int rightIndex = getRightIndex();
 	for (auto &t : vehTypes)
 	{
-		StateRef<VAmmoType> ammoType;
-		for (auto &ve : state->vehicle_equipment)
+		for (auto ve_it = state->vehicle_equipment.begin(); ve_it != state->vehicle_equipment.end();
+		     ++ve_it)
 		{
+			auto &ve = *ve_it;
 			if (ve.second->type != t)
 			{
 				continue;
@@ -332,135 +333,47 @@ void TransactionScreen::populateControlsVehicleEquipment()
 			{
 				continue;
 			}
-			if (state->economy.find(ve.first) != state->economy.end())
+			if (state->economy.find(ve.first) == state->economy.end())
 			{
-				if (ammoType && ve.second->ammo_type != ammoType)
-				{
-					if (state->economy.find(ammoType.id) != state->economy.end())
-					{
-						auto controlAmmo = TransactionControl::createControl(*state, ammoType,
-						                                                     leftIndex, rightIndex);
-						if (controlAmmo)
-						{
-							controlAmmo->addCallback(FormEventType::ScrollBarChange,
-							                         onScrollChange);
-							controlAmmo->addCallback(FormEventType::MouseMove, onHover);
-							transactionControls[type].push_back(controlAmmo);
-
-							sp<TransactionControl> otherControlAmmo;
-							if (otherPopulated)
-							{
-								for (auto &c : transactionControls[otherType])
-								{
-									if (c->itemId == ammoType.id)
-									{
-										otherControlAmmo = c;
-										break;
-									}
-								}
-							}
-							if (!otherControlAmmo)
-							{
-								for (auto &c : transactionControls[type])
-								{
-									if (c->itemId == ammoType.id)
-									{
-										otherControlAmmo = c;
-										break;
-									}
-								}
-							}
-							if (otherControlAmmo)
-							{
-								otherControlAmmo->link(controlAmmo);
-							}
-						}
-					}
-					ammoType = nullptr;
-				}
-
-				auto control = TransactionControl::createControl(
-				    *state, StateRef<VEquipmentType>{state.get(), ve.first}, leftIndex, rightIndex);
-				if (control)
-				{
-					control->addCallback(FormEventType::ScrollBarChange, onScrollChange);
-					control->addCallback(FormEventType::MouseMove, onHover);
-					transactionControls[type].push_back(control);
-
-					sp<TransactionControl> otherControl;
-					if (otherPopulated)
-					{
-						for (auto &c : transactionControls[otherType])
-						{
-							if (c->itemId == ve.first)
-							{
-								otherControl = c;
-								break;
-							}
-						}
-					}
-					if (!otherControl)
-					{
-						for (auto &c : transactionControls[type])
-						{
-							if (c->itemId == ve.first)
-							{
-								otherControl = c;
-								break;
-							}
-						}
-					}
-					if (otherControl)
-					{
-						otherControl->link(control);
-					}
-				}
-				if (ve.second->ammo_type)
-				{
-					ammoType = ve.second->ammo_type;
-				}
+				continue;
 			}
-		}
-		if (ammoType)
-		{
-			if (state->economy.find(ammoType.id) != state->economy.end())
+			auto itemControl = TransactionControl::createControl(
+			    *state, StateRef<VEquipmentType>{state.get(), ve.first}, leftIndex, rightIndex);
+			if (itemControl)
 			{
-				auto controlAmmo =
-				    TransactionControl::createControl(*state, ammoType, leftIndex, rightIndex);
-				if (controlAmmo)
+				itemControl->addCallback(FormEventType::ScrollBarChange, onScrollChange);
+				itemControl->addCallback(FormEventType::MouseMove, onHover);
+				if (auto otherControl = findControlById(ve.first))
 				{
-					controlAmmo->addCallback(FormEventType::ScrollBarChange, onScrollChange);
-					controlAmmo->addCallback(FormEventType::MouseMove, onHover);
-					transactionControls[type].push_back(controlAmmo);
-
-					sp<TransactionControl> otherControlAmmo;
-					if (otherPopulated)
-					{
-						for (auto &c : transactionControls[otherType])
-						{
-							if (c->itemId == ammoType.id)
-							{
-								otherControlAmmo = c;
-								break;
-							}
-						}
-					}
-					if (!otherControlAmmo)
-					{
-						for (auto &c : transactionControls[type])
-						{
-							if (c->itemId == ammoType.id)
-							{
-								otherControlAmmo = c;
-								break;
-							}
-						}
-					}
-					if (otherControlAmmo)
-					{
-						otherControlAmmo->link(controlAmmo);
-					}
+					TransactionControl::link(otherControl, itemControl);
 				}
+				transactionControls[type].push_back(itemControl);
+			}
+			// don't add ammo control if not in economy
+			if (state->economy.find(ve.second->ammo_type.id) == state->economy.end())
+			{
+				continue;
+			}
+			auto veNextIterator = std::next(ve_it, 1);
+			// skip this iteration if we're adding a control for the same ammo type in the
+			// next iteration
+			if (veNextIterator != state->vehicle_equipment.end() &&
+			    veNextIterator->second->ammo_type.id == ve.second->ammo_type.id)
+			{
+				continue;
+			}
+
+			auto ammoControl = TransactionControl::createControl(*state, ve.second->ammo_type,
+			                                                     leftIndex, rightIndex);
+			if (ammoControl)
+			{
+				ammoControl->addCallback(FormEventType::ScrollBarChange, onScrollChange);
+				ammoControl->addCallback(FormEventType::MouseMove, onHover);
+				if (auto otherControl = findControlById(ve.second->ammo_type.id))
+				{
+					TransactionControl::link(otherControl, ammoControl);
+				}
+				transactionControls[type].push_back(ammoControl);
 			}
 		}
 	}
@@ -510,25 +423,22 @@ void TransactionScreen::updateFormValues(bool queueHighlightUpdate)
 	bio2Delta = 0;
 	moneyDelta = 0;
 
-	std::set<sp<TransactionControl>> linkedControls;
 	for (auto &l : transactionControls)
 	{
 		for (auto &c : l.second)
 		{
-			if (linkedControls.find(c) != linkedControls.end())
+			// if this control is linked to others, only update calculations for one control of the
+			// linked group
+			// if this control is not linked, update calculations
+			if (!c->getLinked() || c->getLinked()->front().lock() == c)
 			{
-				continue;
-			}
-			lqDelta += c->getCrewDelta(leftIndex);
-			lq2Delta += c->getCrewDelta(rightIndex);
-			cargoDelta += c->getCargoDelta(leftIndex);
-			bioDelta += c->getBioDelta(leftIndex);
-			cargo2Delta += c->getCargoDelta(rightIndex);
-			bio2Delta += c->getBioDelta(rightIndex);
-			moneyDelta += c->getPriceDelta();
-			for (auto &l : c->getLinked())
-			{
-				linkedControls.insert(l);
+				lqDelta += c->getCrewDelta(leftIndex);
+				lq2Delta += c->getCrewDelta(rightIndex);
+				cargoDelta += c->getCargoDelta(leftIndex);
+				bioDelta += c->getBioDelta(leftIndex);
+				cargo2Delta += c->getCargoDelta(rightIndex);
+				bio2Delta += c->getBioDelta(rightIndex);
+				moneyDelta += c->getPriceDelta();
 			}
 		}
 	}
@@ -552,7 +462,7 @@ void TransactionScreen::updateBaseHighlight()
 		{
 			auto viewName = format("BUTTON_BASE_%d", ++i);
 			auto view = form->findControlTyped<GraphicButton>(viewName);
-			auto viewImage = drawMiniBase(b.second, viewHighlight, viewFacility);
+			auto viewImage = drawMiniBase(*b.second, viewHighlight, viewFacility);
 			view->setImage(viewImage);
 			view->setDepressedImage(viewImage);
 		}
@@ -651,7 +561,7 @@ void TransactionScreen::displayItem(sp<TransactionControl> control)
 		case TransactionControl::Type::AgentEquipmentCargo:
 		{
 			AEquipmentSheet(formItemAgent)
-			    .display(state->agent_equipment[control->itemId], control->researched);
+			    .display(*state->agent_equipment[control->itemId], control->researched);
 			formItemAgent->setVisible(true);
 			break;
 		}
@@ -700,9 +610,12 @@ bool TransactionScreen::isClosable() const
 				}
 			}
 
-			for (auto &l : c->getLinked())
+			if (c->getLinked())
 			{
-				linkedControls.insert(l);
+				for (auto &l : *c->getLinked())
+				{
+					linkedControls.insert(l.lock());
+				}
 			}
 		}
 	}
@@ -718,11 +631,11 @@ void TransactionScreen::attemptCloseScreen()
 	}
 	else
 	{
-		fw().stageQueueCommand(
-		    {StageCmd::Command::PUSH,
-		     mksp<MessageBox>(confirmClosureText, "", MessageBox::ButtonOptions::YesNoCancel,
-		                      [this] { closeScreen(); },
-		                      [] { fw().stageQueueCommand({StageCmd::Command::POP}); })});
+		fw().stageQueueCommand({StageCmd::Command::PUSH,
+		                        mksp<MessageBox>(
+		                            confirmClosureText, "", MessageBox::ButtonOptions::YesNoCancel,
+		                            [this] { closeScreen(); },
+		                            [] { fw().stageQueueCommand({StageCmd::Command::POP}); })});
 	}
 }
 
@@ -814,5 +727,39 @@ void TransactionScreen::render()
 }
 
 bool TransactionScreen::isTransition() { return false; }
+
+sp<TransactionControl> TransactionScreen::findControlById(Type type, const UString &itemId)
+{
+	auto it =
+	    std::find_if(transactionControls[type].begin(), transactionControls[type].end(),
+	                 [itemId](const sp<TransactionControl> &c) { return c->itemId == itemId; });
+	if (it != transactionControls[type].end())
+	{
+		return *it;
+	}
+	return {};
+}
+sp<TransactionControl> TransactionScreen::findControlById(const UString &itemId)
+{
+	static const std::array<Type, 9> types{
+	    Type::Soldier,         Type::BioChemist,      Type::Physicist,
+	    Type::Engineer,        Type::Vehicle,         Type::AgentEquipment,
+	    Type::FlyingEquipment, Type::GroundEquipment, Type::Aliens};
+	for (auto type : types)
+	{
+		auto it = transactionControls.find(type);
+		if (it != transactionControls.end())
+		{
+			auto it2 = std::find_if(
+			    it->second.begin(), it->second.end(),
+			    [itemId](const sp<TransactionControl> &c) { return c->itemId == itemId; });
+			if (it2 != it->second.end())
+			{
+				return *it2;
+			}
+		}
+	}
+	return {};
+}
 
 }; // namespace OpenApoc

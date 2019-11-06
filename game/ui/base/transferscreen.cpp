@@ -5,7 +5,6 @@
 #include "forms/label.h"
 #include "forms/radiobutton.h"
 #include "forms/scrollbar.h"
-#include "forms/transactioncontrol.h"
 #include "forms/ui.h"
 #include "framework/configfile.h"
 #include "framework/data.h"
@@ -24,6 +23,7 @@
 #include "game/ui/base/recruitscreen.h"
 #include "game/ui/general/agentsheet.h"
 #include "game/ui/general/messagebox.h"
+#include "game/ui/general/transactioncontrol.h"
 #include <array>
 
 namespace OpenApoc
@@ -148,7 +148,7 @@ void TransferScreen::updateBaseHighlight()
 		{
 			auto viewName = format("BUTTON_SECOND_BASE_%d", ++i);
 			auto view = form->findControlTyped<GraphicButton>(viewName);
-			auto viewImage = drawMiniBase(b.second, viewHighlight, viewFacility);
+			auto viewImage = drawMiniBase(*b.second, viewHighlight, viewFacility);
 			view->setImage(viewImage);
 			view->setDepressedImage(viewImage);
 		}
@@ -220,13 +220,14 @@ void TransferScreen::displayItem(sp<TransactionControl> control)
 		case TransactionControl::Type::Engineer:
 		case TransactionControl::Type::Physicist:
 		{
-			RecruitScreen::personnelSheet(state->agents[control->itemId], formPersonnelStats);
+			RecruitScreen::personnelSheet(*state->agents[control->itemId], formPersonnelStats);
 			formPersonnelStats->setVisible(true);
 			break;
 		}
 		case TransactionControl::Type::Soldier:
 		{
-			AgentSheet(formAgentStats).display(state->agents[control->itemId], bigUnitRanks, false);
+			AgentSheet(formAgentStats)
+			    .display(*state->agents[control->itemId], bigUnitRanks, false);
 			formAgentStats->setVisible(true);
 			break;
 		}
@@ -239,7 +240,7 @@ void TransferScreen::closeScreen()
 {
 	auto player = state->getPlayer();
 
-	// Step 01: Check accomodation of different sorts
+	// Step 01: Check accommodation of different sorts
 	{
 		std::array<int, MAX_BASES> vecCrewDelta;
 		std::array<int, MAX_BASES> vecCargoDelta;
@@ -275,9 +276,12 @@ void TransferScreen::closeScreen()
 					}
 					i++;
 				}
-				for (auto &l : c->getLinked())
+				if (c->getLinked())
 				{
-					linkedControls.insert(l);
+					for (auto &l : *c->getLinked())
+					{
+						linkedControls.insert(l.lock());
+					}
 				}
 			}
 		}
@@ -384,8 +388,9 @@ void TransferScreen::closeScreen()
 				{
 					for (auto &v : state->vehicles)
 					{
-						if (v.second->owner != o || (!v.second->type->provideFreightCargo &&
-						                             !v.second->type->provideFreightBio) ||
+						if (v.second->owner != o ||
+						    (!v.second->type->provideFreightCargo &&
+						     !v.second->type->provideFreightBio) ||
 						    !v.second->missions.empty())
 						{
 							continue;
@@ -415,11 +420,13 @@ void TransferScreen::closeScreen()
 			{
 				UString message =
 				    transportationHostile
-				        ? format("%s %s", tr("This hostile organization refuses to carry out the "
-				                             "requested transfer."),
+				        ? format("%s %s",
+				                 tr("This hostile organization refuses to carry out the "
+				                    "requested transfer."),
 				                 tr("Proceed?"))
-				        : format("%s %s", tr("No free transport to carry out the requested "
-				                             "transportation detected in the city."),
+				        : format("%s %s",
+				                 tr("No free transport to carry out the requested "
+				                    "transportation detected in the city."),
 				                 tr("Proceed?"));
 				fw().stageQueueCommand(
 				    {StageCmd::Command::PUSH,
@@ -431,8 +438,9 @@ void TransferScreen::closeScreen()
 			else if (!transportationHostile)
 			{
 				// FIXME: Different message maybe? Same for now
-				UString message = format("%s %s", tr("No free transport to carry out the requested "
-				                                     "transportation detected in the city."),
+				UString message = format("%s %s",
+				                         tr("No free transport to carry out the requested "
+				                            "transportation detected in the city."),
 				                         tr("Proceed?"));
 				fw().stageQueueCommand(
 				    {StageCmd::Command::PUSH,
@@ -445,8 +453,9 @@ void TransferScreen::closeScreen()
 			{
 				fw().stageQueueCommand(
 				    {StageCmd::Command::PUSH,
-				     mksp<MessageBox>(title, tr("This hostile organization refuses to carry out "
-				                                "the requested transfer."),
+				     mksp<MessageBox>(title,
+				                      tr("This hostile organization refuses to carry out "
+				                         "the requested transfer."),
 				                      MessageBox::ButtonOptions::Ok)});
 				return;
 			}
@@ -492,6 +501,16 @@ void TransferScreen::executeOrders()
 					case TransactionControl::Type::BioChemist:
 					case TransactionControl::Type::Engineer:
 					case TransactionControl::Type::Physicist:
+					{
+						StateRef<Agent> agent{state.get(), c->itemId};
+						if (agent->lab_assigned)
+						{
+							StateRef<Lab> lab{state.get(), agent->lab_assigned};
+							agent->lab_assigned->removeAgent(lab, agent);
+						}
+						agent->transfer(*state, newBase->building);
+						break;
+					}
 					case TransactionControl::Type::Soldier:
 					{
 						StateRef<Agent> agent{state.get(), c->itemId};
@@ -528,11 +547,16 @@ void TransferScreen::executeOrders()
 						}
 						break;
 					}
+					default:
+						break;
 				}
 			}
-			for (auto &l : c->getLinked())
+			if (c->getLinked())
 			{
-				linkedControls.insert(l);
+				for (auto &l : *c->getLinked())
+				{
+					linkedControls.insert(l.lock());
+				}
 			}
 		}
 	}
@@ -612,9 +636,12 @@ void TransferScreen::executeOrders()
 					}
 				}
 			}
-			for (auto &l : c->getLinked())
+			if (c->getLinked())
 			{
-				linkedControls.insert(l);
+				for (auto &l : *c->getLinked())
+				{
+					linkedControls.insert(l.lock());
+				}
 			}
 		}
 	}
@@ -633,7 +660,7 @@ void TransferScreen::initViewSecondBase()
 			currentSecondView = view;
 		}
 		view->setData(b.second);
-		auto viewImage = drawMiniBase(b.second, viewHighlight, viewFacility);
+		auto viewImage = drawMiniBase(*b.second, viewHighlight, viewFacility);
 		view->setImage(viewImage);
 		view->setDepressedImage(viewImage);
 		wp<GraphicButton> weakView(view);
@@ -669,7 +696,7 @@ void TransferScreen::render()
 	auto viewBase = currentSecondView->getData<Base>();
 	if (second_base == viewBase)
 	{
-		Vec2<int> pos = form->Location + currentSecondView->Location - 2;
+		Vec2<int> pos = currentSecondView->getLocationOnScreen() - 2;
 		Vec2<int> size = currentSecondView->Size + 4;
 		fw().renderer->drawRect(pos, size, COLOUR_RED);
 	}

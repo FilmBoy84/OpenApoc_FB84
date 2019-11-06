@@ -133,11 +133,11 @@ std::shared_future<void> loadBattleVehicle(bool hotseat, sp<VehicleType> vehicle
 			    state->current_battle->relationshipsBeforeSkirmish[{state, o.first}] =
 			        o.second->getRelationTo(state->getPlayer());
 		    }
-		});
+	    });
 
 	return loadTask;
 }
-}
+} // namespace
 
 Skirmish::Skirmish(sp<GameState> state) : Stage(), menuform(ui().getForm("skirmish")), state(*state)
 {
@@ -148,56 +148,55 @@ Skirmish::Skirmish(sp<GameState> state) : Stage(), menuform(ui().getForm("skirmi
 		    menuform->findControlTyped<Label>("NUM_HUMANS")
 		        ->setText(format(
 		            "%d", menuform->findControlTyped<ScrollBar>("NUM_HUMANS_SLIDER")->getValue()));
-		});
+	    });
 	menuform->findControlTyped<ScrollBar>("NUM_HYBRIDS_SLIDER")
 	    ->addCallback(FormEventType::ScrollBarChange, [this](Event *) {
 		    menuform->findControlTyped<Label>("NUM_HYBRIDS")
 		        ->setText(format(
 		            "%d", menuform->findControlTyped<ScrollBar>("NUM_HYBRIDS_SLIDER")->getValue()));
-		});
+	    });
 	menuform->findControlTyped<ScrollBar>("NUM_ANDROIDS_SLIDER")
 	    ->addCallback(FormEventType::ScrollBarChange, [this](Event *) {
 		    menuform->findControlTyped<Label>("NUM_ANDROIDS")
 		        ->setText(format(
 		            "%d",
 		            menuform->findControlTyped<ScrollBar>("NUM_ANDROIDS_SLIDER")->getValue()));
-		});
+	    });
 	menuform->findControlTyped<ScrollBar>("DAYS_PHYSICAL_SLIDER")
 	    ->addCallback(FormEventType::ScrollBarChange, [this](Event *) {
 		    menuform->findControlTyped<Label>("DAYS_PHYSICAL")
 		        ->setText(format(
 		            "%d",
 		            menuform->findControlTyped<ScrollBar>("DAYS_PHYSICAL_SLIDER")->getValue()));
-		});
+	    });
 	menuform->findControlTyped<ScrollBar>("DAYS_PSI_SLIDER")
 	    ->addCallback(FormEventType::ScrollBarChange, [this](Event *) {
 		    menuform->findControlTyped<Label>("DAYS_PSI")
 		        ->setText(format(
 		            "%d", menuform->findControlTyped<ScrollBar>("DAYS_PSI_SLIDER")->getValue()));
-		});
+	    });
 	menuform->findControlTyped<ScrollBar>("PLAYER_TECH_SLIDER")
 	    ->addCallback(FormEventType::ScrollBarChange, [this](Event *) {
 		    menuform->findControlTyped<Label>("PLAYER_TECH")
-		        ->setText(menuform->findControlTyped<ScrollBar>("PLAYER_TECH_SLIDER")->getValue() ==
-		                          0
-		                      ? "NO"
-		                      : format("%d",
-		                               menuform->findControlTyped<ScrollBar>("PLAYER_TECH_SLIDER")
+		        ->setText(
+		            menuform->findControlTyped<ScrollBar>("PLAYER_TECH_SLIDER")->getValue() == 0
+		                ? "NO"
+		                : format("%d", menuform->findControlTyped<ScrollBar>("PLAYER_TECH_SLIDER")
 		                                   ->getValue()));
-		});
+	    });
 	menuform->findControlTyped<ScrollBar>("ALIEN_SCORE_SLIDER")
 	    ->addCallback(FormEventType::ScrollBarChange, [this](Event *) {
 		    menuform->findControlTyped<Label>("ALIEN_SCORE")
 		        ->setText(format(
 		            "%dK",
 		            menuform->findControlTyped<ScrollBar>("ALIEN_SCORE_SLIDER")->getValue()));
-		});
+	    });
 	menuform->findControlTyped<ScrollBar>("ORG_SCORE_SLIDER")
 	    ->addCallback(FormEventType::ScrollBarChange, [this](Event *) {
 		    menuform->findControlTyped<Label>("ORG_SCORE")
 		        ->setText(format(
 		            "%d", menuform->findControlTyped<ScrollBar>("ORG_SCORE_SLIDER")->getValue()));
-		});
+	    });
 	menuform->findControlTyped<ScrollBar>("ARMOR_SLIDER")
 	    ->addCallback(FormEventType::ScrollBarChange, [this](Event *) {
 		    UString armor = "";
@@ -225,7 +224,7 @@ Skirmish::Skirmish(sp<GameState> state) : Stage(), menuform(ui().getForm("skirmi
 				    break;
 		    }
 		    menuform->findControlTyped<Label>("ARMOR")->setText(armor);
-		});
+	    });
 
 	menuform->findControlTyped<ScrollBar>("NUM_HUMANS_SLIDER")->setValue(8);
 	menuform->findControlTyped<ScrollBar>("NUM_HYBRIDS_SLIDER")->setValue(2);
@@ -278,13 +277,13 @@ void Skirmish::goToBattle(bool customAliens, std::map<StateRef<AgentType>, int> 
 	auto city = sourceBase->building->city;
 
 	auto newBuilding = mksp<Building>();
-	city->buildings["SKIRMISH_BUILDING"] = newBuilding;
+	city->buildings["BUILDING_SKIRMISH"] = newBuilding;
 
 	auto newBase = mksp<Base>();
-	state.player_bases["SKIRMISH_BASE"] = newBase;
+	state.player_bases["BASE_SKIRMISH"] = newBase;
 
-	StateRef<Building> playerBuilding = {&state, "SKIRMISH_BUILDING"};
-	StateRef<Base> playerBase = {&state, "SKIRMISH_BASE"};
+	StateRef<Building> playerBuilding = {&state, "BUILDING_SKIRMISH"};
+	StateRef<Base> playerBase = {&state, "BASE_SKIRMISH"};
 
 	playerBuilding->owner = state.getPlayer();
 	playerBuilding->base = playerBase;
@@ -345,7 +344,7 @@ void Skirmish::goToBattle(bool customAliens, std::map<StateRef<AgentType>, int> 
 	{
 		auto initialEquipment =
 		    playerTech == 0
-		        ? std::list<sp<AEquipmentType>>()
+		        ? std::list<const AEquipmentType *>()
 		        : EquipmentSet::getByLevel(state, playerTech)->generateEquipmentList(state);
 
 		int initialArmorType = menuform->findControlTyped<ScrollBar>("ARMOR_SLIDER")->getValue();
@@ -353,66 +352,68 @@ void Skirmish::goToBattle(bool customAliens, std::map<StateRef<AgentType>, int> 
 		{
 			case 1:
 				// armor = "MEGAPOL";
-				initialEquipment.push_back(state.agent_equipment["AEQUIPMENTTYPE_MEGAPOL_HELMET"]);
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_MEGAPOL_BODY_ARMOR"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_MEGAPOL_HELMET"].get());
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_MEGAPOL_LEFT_ARM_ARMOR"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_MEGAPOL_BODY_ARMOR"].get());
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_MEGAPOL_RIGHT_ARM_ARMOR"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_MEGAPOL_LEFT_ARM_ARMOR"].get());
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_MEGAPOL_LEG_ARMOR"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_MEGAPOL_RIGHT_ARM_ARMOR"].get());
+				initialEquipment.push_back(
+				    state.agent_equipment["AEQUIPMENTTYPE_MEGAPOL_LEG_ARMOR"].get());
 				break;
 			case 2:
 				// armor = "MEGAPOL+MB";
-				initialEquipment.push_back(state.agent_equipment["AEQUIPMENTTYPE_MEGAPOL_HELMET"]);
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_MARSEC_BODY_UNIT"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_MEGAPOL_HELMET"].get());
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_MEGAPOL_LEFT_ARM_ARMOR"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_MARSEC_BODY_UNIT"].get());
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_MEGAPOL_RIGHT_ARM_ARMOR"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_MEGAPOL_LEFT_ARM_ARMOR"].get());
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_MEGAPOL_LEG_ARMOR"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_MEGAPOL_RIGHT_ARM_ARMOR"].get());
+				initialEquipment.push_back(
+				    state.agent_equipment["AEQUIPMENTTYPE_MEGAPOL_LEG_ARMOR"].get());
 				break;
 			case 3:
 				// armor = "MARSEC";
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_MARSEC_HEAD_UNIT"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_MARSEC_HEAD_UNIT"].get());
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_MARSEC_BODY_UNIT"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_MARSEC_BODY_UNIT"].get());
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_MARSEC_LEFT_ARM_UNIT"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_MARSEC_LEFT_ARM_UNIT"].get());
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_MARSEC_RIGHT_ARM_UNIT"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_MARSEC_RIGHT_ARM_UNIT"].get());
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_MARSEC_LEG_UNITS"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_MARSEC_LEG_UNITS"].get());
 				break;
 			case 4:
 				// armor = "X-COM+MB";
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_X-COM_HEAD_SHIELD"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_X-COM_HEAD_SHIELD"].get());
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_MARSEC_BODY_UNIT"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_MARSEC_BODY_UNIT"].get());
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_X-COM_LEFT_ARM_SHIELD"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_X-COM_LEFT_ARM_SHIELD"].get());
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_X-COM_RIGHT_ARM_SHIELD"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_X-COM_RIGHT_ARM_SHIELD"].get());
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_X-COM_LEG_SHIELDS"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_X-COM_LEG_SHIELDS"].get());
 				break;
 			case 5:
 				// armor = "X-COM";
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_X-COM_HEAD_SHIELD"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_X-COM_HEAD_SHIELD"].get());
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_X-COM_BODY_SHIELD"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_X-COM_BODY_SHIELD"].get());
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_X-COM_LEFT_ARM_SHIELD"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_X-COM_LEFT_ARM_SHIELD"].get());
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_X-COM_RIGHT_ARM_SHIELD"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_X-COM_RIGHT_ARM_SHIELD"].get());
 				initialEquipment.push_back(
-				    state.agent_equipment["AEQUIPMENTTYPE_X-COM_LEG_SHIELDS"]);
+				    state.agent_equipment["AEQUIPMENTTYPE_X-COM_LEG_SHIELDS"].get());
 				break;
 			default:
 				break;
@@ -521,7 +522,7 @@ void Skirmish::goToBattle(bool customAliens, std::map<StateRef<AgentType>, int> 
 	sp<Agent> firstAgent;
 	for (auto &a : state.agents)
 	{
-		if (a.second->homeBuilding.id == "SKIRMISH_BUILDING")
+		if (a.second->homeBuilding.id == "BUILDING_SKIRMISH")
 		{
 			firstAgent = a.second;
 			break;
@@ -634,10 +635,10 @@ void Skirmish::battleInBase(bool hotseat, StateRef<Base> base, bool customAliens
 {
 	fw().stageQueueCommand(
 	    {StageCmd::Command::REPLACEALL,
-	     mksp<BattleBriefing>(state.shared_from_this(), state.getAliens(), base->building.id, true,
-	                          true, loadBattleBuilding(hotseat, base->building, &state, base, false,
-	                                                   customAliens, aliens, false, 0, false, 0,
-	                                                   score))});
+	     mksp<BattleBriefing>(
+	         state.shared_from_this(), state.getAliens(), base->building.id, true, true,
+	         loadBattleBuilding(hotseat, base->building, &state, base, false, customAliens, aliens,
+	                            false, 0, false, 0, score))});
 }
 
 void Skirmish::battleInVehicle(bool hotseat, StateRef<Base> playerBase,
@@ -731,4 +732,4 @@ void Skirmish::render()
 }
 
 bool Skirmish::isTransition() { return false; }
-}
+} // namespace OpenApoc

@@ -10,6 +10,7 @@
 #include "framework/imageloader_interface.h"
 #include "framework/logger.h"
 #include "framework/musicloader_interface.h"
+#include "framework/options.h"
 #include "framework/palette.h"
 #include "framework/sampleloader_interface.h"
 #include "framework/trace.h"
@@ -26,17 +27,6 @@ using namespace OpenApoc;
 
 namespace OpenApoc
 {
-
-ConfigOptionInt imageCacheSize("Framework.Data", "ImageCacheSize",
-                               "Number of Images to keep in data cache", 100);
-ConfigOptionInt imageSetCacheSize("Framework.Data", "ImageSetCacheSize",
-                                  "Number of ImageSets to keep in data cache", 10);
-ConfigOptionInt voxelCacheSize("Framework.Data", "VoxelCacheSize",
-                               "Number of VoxelMaps to keep in data cache", 1);
-ConfigOptionInt fontStringCacheSize("Framework.Data", "FontStringCacheSize",
-                                    "Number of rendered font stings to keep in data cache", 100);
-ConfigOptionInt paletteCacheSize("Framework.Data", "PaletteCacheSize",
-                                 "Number of Palettes to keep in data cache", 10);
 
 class DataImpl final : public Data
 {
@@ -150,6 +140,7 @@ DataImpl::DataImpl(std::vector<UString> paths) : Data(paths)
 	}
 
 	registeredSampleLoaders["raw"].reset(getRAWSampleLoaderFactory());
+	registeredSampleLoaders["wav"].reset(getWAVSampleLoaderFactory());
 	for (auto &sampleBackend : registeredSampleLoaders)
 	{
 		auto t = sampleBackend.first;
@@ -176,15 +167,15 @@ DataImpl::DataImpl(std::vector<UString> paths) : Data(paths)
 		else
 			LogWarning("Failed to load music loader %s", t);
 	}
-	for (int i = 0; i < imageCacheSize.get(); i++)
+	for (int i = 0; i < Options::imageCacheSize.get(); i++)
 		pinnedImages.push(nullptr);
-	for (int i = 0; i < imageSetCacheSize.get(); i++)
+	for (int i = 0; i < Options::imageSetCacheSize.get(); i++)
 		pinnedImageSets.push(nullptr);
-	for (int i = 0; i < voxelCacheSize.get(); i++)
+	for (int i = 0; i < Options::voxelCacheSize.get(); i++)
 		pinnedLOFVoxels.push(nullptr);
-	for (int i = 0; i < fontStringCacheSize.get(); i++)
+	for (int i = 0; i < Options::fontStringCacheSize.get(); i++)
 		pinnedFontStrings.push(nullptr);
-	for (int i = 0; i < paletteCacheSize.get(); i++)
+	for (int i = 0; i < Options::paletteCacheSize.get(); i++)
 		pinnedPalettes.push(nullptr);
 
 	this->readAliases();
@@ -301,9 +292,9 @@ sp<ImageSet> DataImpl::loadImageSet(const UString &path)
 	if (path.substr(0, 4) == "RAW:")
 	{
 		auto splitString = path.split(':');
-		imgSet =
-		    RawImage::loadSet(*this, splitString[1], Vec2<int>{Strings::toInteger(splitString[2]),
-		                                                       Strings::toInteger(splitString[3])});
+		imgSet = RawImage::loadSet(
+		    *this, splitString[1],
+		    Vec2<int>{Strings::toInteger(splitString[2]), Strings::toInteger(splitString[3])});
 	}
 	// PCK resources come in the format:
 	//"PCK:PCKFILE:TABFILE[:optional/ignored]"
@@ -777,14 +768,25 @@ bool DataImpl::writeImage(UString systemPath, sp<Image> image, sp<Palette> palet
 {
 	auto outPath = fs::path(systemPath.str());
 	auto outDir = outPath.parent_path();
-	try
+	if (!outDir.empty())
 	{
-		fs::create_directories(outDir);
-	}
-	// Just catch any problem and continue anyway?
-	catch (fs::filesystem_error e)
-	{
-		LogWarning("create_directories failed with \"%s\"", e.what());
+		if (!fs::exists(outDir))
+		{
+			try
+			{
+				fs::create_directories(outDir);
+			}
+			// Just catch any problem and continue anyway?
+			catch (fs::filesystem_error &e)
+			{
+				LogWarning("create_directories failed with \"%s\"", e.what());
+			}
+		}
+		else if (!fs::is_directory(outDir))
+		{
+			LogWarning("Cannot open %s: %s is not a directory", outPath, outDir);
+			return false;
+		}
 	}
 	std::ofstream outFile(systemPath.str(), std::ios::binary);
 	if (!outFile)

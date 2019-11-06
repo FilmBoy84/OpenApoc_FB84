@@ -23,13 +23,14 @@ class UnitAI
 		Hardcore
 	};
 	Type type; // cannot hide because serializer won't work
+	virtual ~UnitAI() = default;
 	virtual const UString getName();
 
-	// Wether AI is currently active
+	// Whether AI is currently active
 	bool active = false;
 
 	virtual void reset(GameState &, BattleUnit &){};
-	// Returns decision that was made, and wether we should stop going forward on the AI chain
+	// Returns decision that was made, and whether we should stop going forward on the AI chain
 	virtual std::tuple<AIDecision, bool> think(GameState &, BattleUnit &, bool) { return {}; };
 	virtual void routine(GameState &, BattleUnit &){};
 
@@ -60,7 +61,7 @@ class AIBlockUnit
 	// void reportExecuted(AIAction &action);
 	// Reports movement execution
 	// Sometimes, movement is executed too quickly and by the time we next check it in ai code
-	// it's already finished. Wether the agent finished executing or never began to is unknown.
+	// it's already finished. Whether the agent finished executing or never began to is unknown.
 	// Therefore we must manually report we have started to execute the movement
 	void reportExecuted(AIMovement &movement);
 
@@ -68,4 +69,4 @@ class AIBlockUnit
 	void notifyHit(Vec3<int> position);
 	void notifyEnemySpotted(Vec3<int> position);
 };
-}
+} // namespace OpenApoc

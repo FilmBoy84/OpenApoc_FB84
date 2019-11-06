@@ -17,10 +17,12 @@ class SupportedMapPart
 	// Attempts to re-link map parts to supports in the provided set
 	static void attemptReLinkSupports(sp<std::set<SupportedMapPart *>> set);
 
+	virtual ~SupportedMapPart() = default;
+
   public:
 	// Compiles a list of parts supported by this part
 	// Using sp because we switch to a new one constantly in re-linking
-	// Using set because we need to easilly weed out duplicates
+	// Using set because we need to easily weed out duplicates
 	virtual sp<std::set<SupportedMapPart *>> getSupportedParts() = 0;
 
 	// Makes mappart stop being valid for support and collapse in 1 vanilla tick

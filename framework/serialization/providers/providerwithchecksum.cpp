@@ -2,6 +2,7 @@
 #include "framework/serialization/providers/providerwithchecksum.h"
 #include "framework/configfile.h"
 #include "framework/logger.h"
+#include "framework/options.h"
 #include "framework/trace.h"
 #include "library/strings.h"
 #include "library/strings_format.h"
@@ -9,19 +10,17 @@
 
 #include "dependencies/pugixml/src/pugixml.hpp"
 
-// Disable automatic #pragma linking for boost - only enabled in msvc and that should provide boost
-// symbols as part of the module that uses it
-#define BOOST_ALL_NO_LIB
 #include <boost/crc.hpp>
+#include <boost/version.hpp>
+#if BOOST_VERSION >= 106600
+#include <boost/uuid/detail/sha1.hpp>
+#else
 #include <boost/uuid/sha1.hpp>
+#endif
 #include <boost/uuid/uuid.hpp>
 
 namespace OpenApoc
 {
-ConfigOptionBool useCRCChecksum("Framework.Serialization", "CRC",
-                                "use a CRC checksum when saving files", true);
-ConfigOptionBool useSHA1Checksum("Framework.Serialization", "SHA1",
-                                 "use a SHA1 checksum when saving files", false);
 
 static UString calculateSHA1Checksum(const std::string &str)
 {
@@ -199,9 +198,9 @@ bool ProviderWithChecksum::saveDocument(const UString &path, const UString &cont
 			LogWarning("Multiple document entries for path \"%s\"", path);
 		}
 		this->checksums[path.str()] = {};
-		if (useCRCChecksum.get())
+		if (Options::useCRCChecksum.get())
 			this->checksums[path.str()]["CRC"] = calculateChecksum("CRC", contents.str()).str();
-		if (useSHA1Checksum.get())
+		if (Options::useSHA1Checksum.get())
 			this->checksums[path.str()]["SHA1"] = calculateChecksum("SHA1", contents.str()).str();
 		return true;
 	}
@@ -213,4 +212,4 @@ bool ProviderWithChecksum::finalizeSave()
 	inner->saveDocument("checksum.xml", manifest);
 	return inner->finalizeSave();
 }
-}
+} // namespace OpenApoc

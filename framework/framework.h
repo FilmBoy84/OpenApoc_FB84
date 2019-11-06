@@ -1,5 +1,6 @@
 #pragma once
 
+#include "framework/modinfo.h"
 #include "library/sp.h"
 #include "library/strings.h"
 #include "library/vec.h"
@@ -14,6 +15,7 @@ class GameCore;
 class FrameworkPrivate;
 class ApocCursor;
 class Event;
+class Image;
 class Data;
 class Renderer;
 class SoundBackend;
@@ -69,6 +71,7 @@ class Framework
 	void displaySetTitle(UString NewTitle);
 	void displaySetIcon(sp<RGBImage> icon);
 	bool displayHasWindow() const;
+	void *getWindowHandle() const;
 
 	bool isSlowMode();
 	void setSlowMode(bool SlowEnabled);
@@ -83,6 +86,12 @@ class Framework
 
 	void textStartInput();
 	void textStopInput();
+
+	void toolTipStartTimer(up<Event> e);
+	void toolTipStopTimer();
+	void toolTipTimerCallback(unsigned int interval, void *data);
+	void showToolTip(sp<Image> image, const Vec2<int> &position);
+
 	UString textGetClipboard();
 
 	void threadPoolTaskEnqueue(std::function<void()> task);
@@ -107,6 +116,8 @@ class Framework
 
 	UString getDataDir() const;
 	UString getCDPath() const;
+
+	void setupModDataPaths();
 };
 
 static inline Framework &fw() { return Framework::getInstance(); }

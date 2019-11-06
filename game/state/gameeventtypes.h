@@ -46,6 +46,7 @@ enum class GameEventType
 
 	// Building events
 	AlienSpotted,
+	CommenceInvestigation,
 	BuildingAttacked,
 	CargoExpiresSoon,
 	MissionCompletedBuildingRaid,
@@ -109,5 +110,6 @@ enum class GameEventType
 	MissionCompletedVehicle,
 	MissionCompletedBuildingAlien,
 
+	None
 };
 }

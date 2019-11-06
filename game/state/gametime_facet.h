@@ -1,8 +1,5 @@
 #pragma once
 
-// Disable automatic #pragma linking for boost - only enabled in msvc and that should provide boost
-// symbols as part of the module that uses it
-#define BOOST_ALL_NO_LIB
 #include <boost/date_time.hpp>
 #include <boost/date_time/date_facet.hpp>
 
@@ -83,10 +80,10 @@ class ApocDateFacet : public date_facet<date_type, CharT, OutItrT>
 template <class date_type, class CharT, class OutItrT>
 const typename ApocDateFacet<date_type, CharT, OutItrT>::char_type
     ApocDateFacet<date_type, CharT, OutItrT>::long_day_format[3] = {'%', 'E'};
-}
+} // namespace date_time
 
 namespace gregorian
 {
 typedef boost::date_time::ApocDateFacet<date, char> apoc_date_facet;
 }
-}
+} // namespace boost

@@ -31,7 +31,7 @@ class BattleScanner : public StateObject
 
 	// 2d map, amount of movement for each coordinate, stored in y * size.x + x order
 	std::vector<int> movementTicks;
-	// Updated every update, this indicates conetnt has changed
+	// Updated every update, this indicates content has changed
 	uint64_t version = 0;
 	unsigned int updateTicksAccumulated = 0;
 	Vec3<int> lastPosition;
@@ -40,4 +40,4 @@ class BattleScanner : public StateObject
 	void update(GameState &state, unsigned int ticks);
 	void notifyMovement(Vec3<int> position);
 };
-}
+} // namespace OpenApoc

@@ -50,6 +50,7 @@ TacticalAIVanilla::think(GameState &state, StateRef<Organisation> o)
 			unitsActive++;
 		}
 	}
+	LogAssert(unitsTotal > 0);
 	// Chance to retreat is [0 to 50]% as number of neutralised allies goes [50 to 100]%
 	bool retreat =
 	    randBoundsExclusive(state.rng, 0, 100) < (unitsActive - unitsTotal / 2) / unitsTotal;
@@ -170,7 +171,7 @@ TacticalAIVanilla::getPatrolMovement(GameState &state, BattleUnit &u)
 
 	while (iterationCount++ < maxIterations)
 	{
-		auto lbID = vectorRandomizer(state.rng, state.current_battle->losBlockRandomizer);
+		auto lbID = pickRandom(state.rng, state.current_battle->losBlockRandomizer);
 
 		// Make sure every unit can go there
 		bool unavailable = false;
@@ -206,4 +207,4 @@ TacticalAIVanilla::getPatrolMovement(GameState &state, BattleUnit &u)
 
 	return std::make_tuple(units, result);
 }
-}
+} // namespace OpenApoc

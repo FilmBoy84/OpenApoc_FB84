@@ -23,11 +23,12 @@ template <class T, uint64_t A = 23, uint64_t B = 18, uint64_t C = 5> class Xorsh
 	static_assert(std::numeric_limits<result_type>::max() <= std::numeric_limits<uint64_t>::max(),
 	              "Can only be used on types of uint64_t size or smaller");
 
-	Xorshift128Plus(uint64_t seed = 0)
+	Xorshift128Plus(uint64_t initial_seed = 0) { seed(initial_seed); }
+	void seed(uint64_t seed_value)
 	{
 		// splitmix64 to initial seed to make sure there are some non-zero bits
-		s[0] = static_cast<result_type>(splitmix64(seed));
-		s[1] = static_cast<result_type>(splitmix64(seed ^ s[0]));
+		s[0] = static_cast<result_type>(splitmix64(seed_value));
+		s[1] = static_cast<result_type>(splitmix64(seed_value ^ s[0]));
 	}
 	Xorshift128Plus(uint64_t state[2])
 	{
@@ -161,144 +162,36 @@ template <typename T, typename Generator> T randDamage000200(Generator &g, T val
 {
 	T min = 0;
 	T max = value * (T)2;
-	if (min > max)
-	{
-		throw std::runtime_error("Bounds max < min");
-	}
-	// uniform_int_distribution is apparently undefined if min==max
-	if (min == max)
-		return min;
-	std::uniform_int_distribution<T> dist(min, max);
-	return dist(g);
+	return randBoundsInclusive(g, min, max);
 }
 
 template <typename T, typename Generator> T randDamage050150(Generator &g, T value)
 {
 	T min = value / (T)2;
 	T max = value * (T)3 / (T)2;
-	if (min > max)
-	{
-		throw std::runtime_error("Bounds max < min");
-	}
-	// uniform_int_distribution is apparently undefined if min==max
-	if (min == max)
-		return min;
-	std::uniform_int_distribution<T> dist(min, max);
-	return dist(g);
+	return randBoundsInclusive(g, min, max);
 }
 
 template <typename T, typename Generator> T randDamage025075(Generator &g, T value)
 {
 	T min = value / (T)4;
 	T max = value * (T)3 / (T)4;
-	if (min > max)
-	{
-		throw std::runtime_error("Bounds max < min");
-	}
-	// uniform_int_distribution is apparently undefined if min==max
-	if (min == max)
-		return min;
-	std::uniform_int_distribution<T> dist(min, max);
-	return dist(g);
+	return randBoundsInclusive(g, min, max);
 }
-template <typename T, typename Generator> T listRandomiser(Generator &g, const std::list<T> &list)
+
+template <typename Container, typename Generator>
+typename Container::const_reference pickRandom(Generator &g, const Container &c)
 {
 	// we can't do index lookups in a list, so we just have to iterate N times
-	if (list.size() == 1)
-		return *list.begin();
-	else if (list.empty())
+	if (c.size() == 1)
 	{
-		throw std::runtime_error("Trying to randomize within empty list");
+		return *begin(c);
 	}
-	auto count = randBoundsExclusive(g, (unsigned)0, (unsigned)list.size());
-
-	auto it = list.begin();
-	while (count)
+	else if (c.empty())
 	{
-		it++;
-		count--;
+		throw std::runtime_error("Trying to randomize within empty container");
 	}
-	return *it;
-}
-
-template <typename T, typename Generator> T setRandomiser(Generator &g, const std::set<T> &set)
-{
-	// we can't do index lookups in a set, so we just have to iterate N times
-	if (set.size() == 1)
-		return *set.begin();
-	else if (set.empty())
-	{
-		throw std::runtime_error("Trying to randomize within empty list");
-	}
-	auto count = randBoundsExclusive(g, (unsigned)0, (unsigned)set.size());
-
-	auto it = set.begin();
-	while (count)
-	{
-		it++;
-		count--;
-	}
-	return *it;
-}
-
-template <typename T1, typename T2, typename Generator>
-std::pair<T1, T2> mapRandomizer(Generator &g, const std::map<T1, T2> &map)
-{
-	// we can't do index lookups in a set, so we just have to iterate N times
-	if (map.size() == 1)
-		return *map.begin();
-	else if (map.empty())
-	{
-		throw std::runtime_error("Trying to randomize within empty map");
-	}
-	auto count = randBoundsExclusive(g, (unsigned)0, (unsigned)map.size());
-
-	auto it = map.begin();
-	while (count)
-	{
-		it++;
-		count--;
-	}
-	return *it;
-}
-
-template <typename T, typename Generator>
-T vectorRandomizer(Generator &g, const std::vector<T> &vector)
-{
-	// we can't do index lookups in a list, so we just have to iterate N times
-	if (vector.size() == 1)
-		return *vector.begin();
-	else if (vector.empty())
-	{
-		throw std::runtime_error("Trying to randomize within empty vector");
-	}
-	auto count = randBoundsExclusive(g, (unsigned)0, (unsigned)vector.size());
-	auto it = vector.begin();
-	while (count)
-	{
-		it++;
-		count--;
-	}
-	return *it;
-}
-
-template <typename T, typename Generator> T setRandomizer(Generator &g, const std::set<T> &set)
-{
-	// we can't do index lookups in a list, so we just have to iterate N times
-	if (set.size() == 1)
-		return *set.begin();
-	else if (set.empty())
-	{
-		throw std::runtime_error("Trying to randomize within empty vector");
-	}
-	auto count = randBoundsExclusive(g, (unsigned)0, (unsigned)set.size());
-	auto it = set.begin();
-	while (count)
-	{
-		it++;
-		count--;
-	}
-	return *it;
+	return *std::next(begin(c), randBoundsExclusive(g, (unsigned)0, (unsigned)c.size()));
 }
 
 } // namespace OpenApoc

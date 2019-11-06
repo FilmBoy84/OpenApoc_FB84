@@ -5,8 +5,12 @@
 #include "framework/renderer_interface.h"
 #include "library/sp.h"
 #include <array>
+#include <atomic>
 #include <glm/gtx/rotate_vector.hpp>
+#include <list>
 #include <memory>
+#include <mutex>
+#include <thread>
 
 /* Workaround MSVC not liking int64_t being defined here and in allegro */
 #define GLEXT_64_TYPES_DEFINED
@@ -17,6 +21,11 @@ namespace
 {
 
 using namespace OpenApoc;
+
+std::atomic<bool> renderer_dead = true;
+
+// Forward declaration needed for RendererImageData
+class OGL20Renderer;
 
 class Program
 {
@@ -121,12 +130,12 @@ class SpriteProgram : public Program
 	}
 
   public:
-	GLint posLoc;
-	GLint texcoordLoc;
-	GLint screenSizeLoc;
-	GLint texLoc;
-	GLint flipYLoc;
-	GLint tintLoc;
+	GLint posLoc = -1;
+	GLint texcoordLoc = -1;
+	GLint screenSizeLoc = -1;
+	GLint texLoc = -1;
+	GLint flipYLoc = -1;
+	GLint tintLoc = -1;
 };
 const char *RGBProgram_vertexSource = {
     "#version 110\n"
@@ -353,8 +362,10 @@ class Quad
 	     const Vec2<float> &rotationCenter = {0.0f, 0.0f}, float rotationAngleRadians = 0.0f)
 	{
 		texcoords = {{
-		    Vec2<float>{texCoords.p0}, Vec2<float>{texCoords.p1.x, texCoords.p0.y},
-		    Vec2<float>{texCoords.p0.x, texCoords.p1.y}, Vec2<float>{texCoords.p1},
+		    Vec2<float>{texCoords.p0},
+		    Vec2<float>{texCoords.p1.x, texCoords.p0.y},
+		    Vec2<float>{texCoords.p0.x, texCoords.p1.y},
+		    Vec2<float>{texCoords.p1},
 		}};
 
 		if (rotationAngleRadians != 0.0f)
@@ -362,7 +373,9 @@ class Quad
 			auto rotMatrix = glm::rotate(rotationAngleRadians, Vec3<float>{0.0f, 0.0f, 1.0f});
 			Vec2<float> size = position.p1 - position.p0;
 			vertices = {{
-			    Vec2<float>{0.0f, 0.0f}, Vec2<float>{size.x, 0.0f}, Vec2<float>{0.0f, size.y},
+			    Vec2<float>{0.0f, 0.0f},
+			    Vec2<float>{size.x, 0.0f},
+			    Vec2<float>{0.0f, size.y},
 			    Vec2<float>{size},
 			}};
 			for (auto &p : vertices)
@@ -378,8 +391,10 @@ class Quad
 		else
 		{
 			vertices = {{
-			    Vec2<float>{position.p0}, Vec2<float>{position.p1.x, position.p0.y},
-			    Vec2<float>{position.p0.x, position.p1.y}, Vec2<float>{position.p1},
+			    Vec2<float>{position.p0},
+			    Vec2<float>{position.p1.x, position.p0.y},
+			    Vec2<float>{position.p0.x, position.p1.y},
+			    Vec2<float>{position.p1},
 			}};
 		}
 	}
@@ -458,7 +473,6 @@ class BindTexture
   public:
 	GLenum bind;
 	int unit;
-	bool nop;
 	static GLenum getBindEnum(GLenum e)
 	{
 		switch (e)
@@ -494,7 +508,6 @@ template <GLenum param> class TexParam
   public:
 	GLuint id;
 	GLenum type;
-	bool nop;
 
 	TexParam(GLuint id, GLint value, GLenum type = gl20::TEXTURE_2D) : id(id), type(type)
 	{
@@ -532,11 +545,12 @@ class FBOData : public RendererImageData
 	GLuint fbo;
 	GLuint tex;
 	Vec2<float> size;
+	OGL20Renderer *owner;
 	// Constructor /only/ to be used for default surface (FBO ID == 0)
-	FBOData(GLuint fbo, Vec2<int> size)
+	FBOData(GLuint fbo, Vec2<int> size, OGL20Renderer *owner)
 	    // FIXME: Check FBO == 0
 	    // FIXME: Warn if trying to texture from FBO 0
-	    : fbo(fbo), tex(-1), size(size)
+	    : fbo(fbo), tex(-1), size(size), owner(owner)
 	{
 	}
 
@@ -560,7 +574,7 @@ class FBOData : public RendererImageData
 		return img;
 	}
 
-	FBOData(Vec2<int> size) : size(size.x, size.y)
+	FBOData(Vec2<int> size, OGL20Renderer *owner) : size(size.x, size.y), owner(owner)
 	{
 		gl20::GenTextures(1, &this->tex);
 		BindTexture b(this->tex);
@@ -579,13 +593,7 @@ class FBOData : public RendererImageData
 		LogAssert(gl20::CheckFramebufferStatusEXT(gl20::FRAMEBUFFER_EXT) ==
 		          gl20::FRAMEBUFFER_COMPLETE_EXT);
 	}
-	~FBOData() override
-	{
-		if (tex)
-			gl20::DeleteTextures(1, &tex);
-		if (fbo)
-			gl20::DeleteFramebuffersEXT(1, &fbo);
-	}
+	~FBOData() override;
 };
 
 class GLRGBImage : public RendererImageData
@@ -594,7 +602,9 @@ class GLRGBImage : public RendererImageData
 	GLuint texID;
 	Vec2<float> size;
 	std::weak_ptr<RGBImage> parent;
-	GLRGBImage(sp<RGBImage> parent) : size(parent->size), parent(parent)
+	OGL20Renderer *owner;
+	GLRGBImage(sp<RGBImage> parent, OGL20Renderer *owner)
+	    : size(parent->size), parent(parent), owner(owner)
 	{
 		RGBImageLock l(parent, ImageLockUse::Read);
 		gl20::GenTextures(1, &this->texID);
@@ -606,7 +616,7 @@ class GLRGBImage : public RendererImageData
 		gl20::TexImage2D(gl20::TEXTURE_2D, 0, gl20::RGBA, parent->size.x, parent->size.y, 0,
 		                 gl20::RGBA, gl20::UNSIGNED_BYTE, l.getData());
 	}
-	~GLRGBImage() override { gl20::DeleteTextures(1, &this->texID); }
+	~GLRGBImage() override;
 };
 
 class GLPalette : public RendererImageData
@@ -615,7 +625,9 @@ class GLPalette : public RendererImageData
 	GLuint texID;
 	Vec2<float> size;
 	std::weak_ptr<Palette> parent;
-	GLPalette(sp<Palette> parent) : size(Vec2<float>(parent->colours.size(), 1)), parent(parent)
+	OGL20Renderer *owner;
+	GLPalette(sp<Palette> parent, OGL20Renderer *owner)
+	    : size(Vec2<float>(parent->colours.size(), 1)), parent(parent), owner(owner)
 	{
 		gl20::GenTextures(1, &this->texID);
 		BindTexture b(this->texID);
@@ -626,7 +638,7 @@ class GLPalette : public RendererImageData
 		gl20::TexImage2D(gl20::TEXTURE_2D, 0, gl20::RGBA, parent->colours.size(), 1, 0, gl20::RGBA,
 		                 gl20::UNSIGNED_BYTE, parent->colours.data());
 	}
-	~GLPalette() override { gl20::DeleteTextures(1, &this->texID); }
+	~GLPalette() override;
 };
 
 class GLPaletteImage : public RendererImageData
@@ -635,7 +647,9 @@ class GLPaletteImage : public RendererImageData
 	GLuint texID;
 	Vec2<float> size;
 	std::weak_ptr<PaletteImage> parent;
-	GLPaletteImage(sp<PaletteImage> parent) : size(parent->size), parent(parent)
+	OGL20Renderer *owner;
+	GLPaletteImage(sp<PaletteImage> parent, OGL20Renderer *owner)
+	    : size(parent->size), parent(parent), owner(owner)
 	{
 		PaletteImageLock l(parent, ImageLockUse::Read);
 		gl20::GenTextures(1, &this->texID);
@@ -648,7 +662,7 @@ class GLPaletteImage : public RendererImageData
 		gl20::TexImage2D(gl20::TEXTURE_2D, 0, 1, parent->size.x, parent->size.y, 0, gl20::RED,
 		                 gl20::UNSIGNED_BYTE, l.getData());
 	}
-	~GLPaletteImage() override { gl20::DeleteTextures(1, &this->texID); }
+	~GLPaletteImage() override;
 };
 
 class OGL20Renderer : public Renderer
@@ -673,7 +687,7 @@ class OGL20Renderer : public Renderer
 		this->flush();
 		this->currentSurface = s;
 		if (!s->rendererPrivateData)
-			s->rendererPrivateData.reset(new FBOData(s->size));
+			s->rendererPrivateData.reset(new FBOData(s->size, this));
 
 		FBOData *fbo = static_cast<FBOData *>(s->rendererPrivateData.get());
 		gl20::BindFramebufferEXT(gl20::FRAMEBUFFER_EXT, fbo->fbo);
@@ -683,17 +697,25 @@ class OGL20Renderer : public Renderer
 	sp<Surface> getSurface() override { return currentSurface; }
 	sp<Surface> defaultSurface;
 
+	std::thread::id bound_thread;
+	std::mutex destroyed_texture_list_mutex;
+	std::list<GLuint> destroyed_texture_list;
+	std::mutex destroyed_framebuffer_list_mutex;
+	std::list<GLuint> destroyed_framebuffer_list;
+
   public:
 	OGL20Renderer()
 	    : rgbProgram(new RGBProgram()), colourProgram(new SolidColourProgram()),
 	      paletteProgram(new PaletteProgram()), currentBoundProgram(0), currentBoundFBO(0)
 	{
+		this->bound_thread = std::this_thread::get_id();
 		GLint viewport[4];
 		gl20::GetIntegerv(gl20::VIEWPORT, viewport);
 		LogInfo("Viewport {%d,%d,%d,%d}", viewport[0], viewport[1], viewport[2], viewport[3]);
 		LogAssert(viewport[0] == 0 && viewport[1] == 0);
 		this->defaultSurface = mksp<Surface>(Vec2<int>{viewport[2], viewport[3]});
-		this->defaultSurface->rendererPrivateData.reset(new FBOData(0, {viewport[2], viewport[3]}));
+		this->defaultSurface->rendererPrivateData.reset(
+		    new FBOData(0, {viewport[2], viewport[3]}, this));
 		this->currentSurface = this->defaultSurface;
 
 		GLint maxTexUnits;
@@ -702,8 +724,9 @@ class OGL20Renderer : public Renderer
 		gl20::Enable(gl20::BLEND);
 		gl20::BlendFuncSeparate(gl20::SRC_ALPHA, gl20::ONE_MINUS_SRC_ALPHA, gl20::SRC_ALPHA,
 		                        gl20::DST_ALPHA);
+		renderer_dead = false;
 	}
-	~OGL20Renderer() override = default;
+	~OGL20Renderer() override { renderer_dead = true; };
 	void clear(Colour c = Colour{0, 0, 0, 0}) override
 	{
 		this->flush();
@@ -716,7 +739,7 @@ class OGL20Renderer : public Renderer
 			return;
 		this->flush();
 		if (!p->rendererPrivateData)
-			p->rendererPrivateData.reset(new GLPalette(p));
+			p->rendererPrivateData.reset(new GLPalette(p, this));
 		this->currentPalette = p;
 	}
 	sp<Palette> getPalette() override { return this->currentPalette; }
@@ -734,7 +757,7 @@ class OGL20Renderer : public Renderer
 			GLRGBImage *img = dynamic_cast<GLRGBImage *>(rgbImage->rendererPrivateData.get());
 			if (!img)
 			{
-				img = new GLRGBImage(rgbImage);
+				img = new GLRGBImage(rgbImage, this);
 				image->rendererPrivateData.reset(img);
 			}
 			this->drawRgb(*img, position, size, Scaler::Linear, center, angle);
@@ -759,7 +782,7 @@ class OGL20Renderer : public Renderer
 			GLRGBImage *img = dynamic_cast<GLRGBImage *>(rgbImage->rendererPrivateData.get());
 			if (!img)
 			{
-				img = new GLRGBImage(rgbImage);
+				img = new GLRGBImage(rgbImage, this);
 				image->rendererPrivateData.reset(img);
 			}
 			this->drawRgb(*img, position, size, scaler, {0, 0}, 0, tint);
@@ -773,7 +796,7 @@ class OGL20Renderer : public Renderer
 			    dynamic_cast<GLPaletteImage *>(paletteImage->rendererPrivateData.get());
 			if (!img)
 			{
-				img = new GLPaletteImage(paletteImage);
+				img = new GLPaletteImage(paletteImage, this);
 				image->rendererPrivateData.reset(img);
 			}
 			if (scaler != Scaler::Nearest)
@@ -792,7 +815,7 @@ class OGL20Renderer : public Renderer
 			FBOData *fbo = dynamic_cast<FBOData *>(surface->rendererPrivateData.get());
 			if (!fbo)
 			{
-				fbo = new FBOData(image->size);
+				fbo = new FBOData(image->size, this);
 				image->rendererPrivateData.reset(fbo);
 			}
 			this->drawSurface(*fbo, position, size, scaler, tint);
@@ -819,7 +842,7 @@ class OGL20Renderer : public Renderer
 	void drawRect(Vec2<float> position, Vec2<float> size, Colour c, float thickness = 1.0) override
 	{
 
-		// The lines are all shifted in x/y by {capsize} to ensure the corners are correcly covered
+		// The lines are all shifted in x/y by {capsize} to ensure the corners are correctly covered
 		// and don't overlap (which may be an issue if alpha != 1.0f:
 		//
 		// The cap 'ownership' for lines 1,2,3,4 is shifted by (x-1), (y-1), (x+1), (y+1)
@@ -885,7 +908,28 @@ class OGL20Renderer : public Renderer
 		this->drawFilledRect(C, sizeC, c);
 		this->drawFilledRect(D, sizeD, c);
 	}
-	void flush() override { /* Nothing to flush */}
+	void flush() override
+	{
+		// Cleanup any outstanding destroyed texture or framebuffer objects
+		{
+			std::lock_guard<std::mutex> lock(this->destroyed_texture_list_mutex);
+
+			for (auto &id : this->destroyed_texture_list)
+			{
+				gl20::DeleteTextures(1, &id);
+			}
+			this->destroyed_texture_list.clear();
+		}
+		{
+			std::lock_guard<std::mutex> lock(this->destroyed_framebuffer_list_mutex);
+
+			for (auto &id : this->destroyed_framebuffer_list)
+			{
+				gl20::DeleteFramebuffersEXT(1, &id);
+			}
+			this->destroyed_framebuffer_list.clear();
+		}
+	}
 	UString getName() override { return "OGL2.0 Renderer"; }
 	sp<Surface> getDefaultSurface() override { return this->defaultSurface; }
 
@@ -983,6 +1027,35 @@ class OGL20Renderer : public Renderer
 		Line l(p0, p1, thickness);
 		l.draw(colourProgram->posLoc);
 	}
+	// These can be called from any thread - e.g. from the Image destructors
+	void delete_texture_object(GLuint id)
+	{
+		// If we're already on the bound thread, just immediately destroy
+		if (this->bound_thread == std::this_thread::get_id())
+		{
+			gl20::DeleteTextures(1, &id);
+			return;
+		}
+		// Otherwise add it to a list for future destruction
+		{
+			std::lock_guard<std::mutex> lock(this->destroyed_texture_list_mutex);
+			this->destroyed_texture_list.push_back(id);
+		}
+	}
+	void delete_framebuffer_object(GLuint id)
+	{
+		// If we're already on the bound thread, just immediately destroy
+		if (this->bound_thread == std::this_thread::get_id())
+		{
+			gl20::DeleteFramebuffersEXT(1, &id);
+			return;
+		}
+		// Otherwise add it to a list for future destruction
+		{
+			std::lock_guard<std::mutex> lock(this->destroyed_framebuffer_list_mutex);
+			this->destroyed_framebuffer_list.push_back(id);
+		}
+	}
 };
 
 class OGL20RendererFactory : public OpenApoc::RendererFactory
@@ -1023,6 +1096,46 @@ class OGL20RendererFactory : public OpenApoc::RendererFactory
 		return nullptr;
 	}
 };
+
+FBOData::~FBOData()
+{
+	if (renderer_dead)
+	{
+		LogWarning("FBOData being destroyed after renderer");
+		return;
+	}
+	if (tex)
+		owner->delete_texture_object(tex);
+	if (fbo)
+		owner->delete_framebuffer_object(fbo);
+}
+GLRGBImage::~GLRGBImage()
+{
+	if (renderer_dead)
+	{
+		LogWarning("GLRGBImage being destroyed after renderer");
+		return;
+	}
+	owner->delete_texture_object(this->texID);
+}
+GLPalette::~GLPalette()
+{
+	if (renderer_dead)
+	{
+		LogWarning("GLPalette being destroyed after renderer");
+		return;
+	}
+	owner->delete_texture_object(this->texID);
+}
+GLPaletteImage::~GLPaletteImage()
+{
+	if (renderer_dead)
+	{
+		LogWarning("GLPaletteImage being destroyed after renderer");
+		return;
+	}
+	owner->delete_texture_object(this->texID);
+}
 
 } // anonymous namespace
 

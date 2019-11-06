@@ -17,6 +17,7 @@ class xml_node;
 namespace OpenApoc
 {
 
+class BitmapFont;
 class Form;
 class Event;
 class Surface;
@@ -70,6 +71,7 @@ class Control : public std::enable_shared_from_this<Control>
 	bool isDirty() const { return dirty; }
 
 	bool Visible;
+	bool isClickable;
 
   public:
 	UString Name;
@@ -83,10 +85,15 @@ class Control : public std::enable_shared_from_this<Control>
 	bool takesFocus;
 	bool showBounds;
 	bool Enabled;
-
 	bool canCopy;
 	wp<Control> lastCopiedTo;
 	std::vector<sp<Control>> Controls;
+
+	UString ToolTipText;
+	sp<BitmapFont> ToolTipFont;
+	// transparent background by default
+	Colour ToolTipBackground;
+	std::vector<std::pair<unsigned int, Colour>> ToolTipBorders;
 
 	std::map<UString, sp<RadioButtonGroup>> radiogroups;
 
@@ -133,7 +140,7 @@ class Control : public std::enable_shared_from_this<Control>
 	void setParent(sp<Control> Parent, int position = -1);
 	sp<Control> getAncestor(sp<Control> Parent);
 
-	Vec2<int> getLocationOnScreen() const;
+	Vec2<int> getLocationOnScreen() const { return resolvedLocation; }
 
 	void setRelativeWidth(float widthPercent);
 	void setRelativeHeight(float widthPercent);

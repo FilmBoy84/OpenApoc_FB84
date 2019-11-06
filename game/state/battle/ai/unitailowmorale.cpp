@@ -80,7 +80,7 @@ std::tuple<AIDecision, bool> UnitAILowMorale::think(GameState &state, BattleUnit
 					}
 					if (!adjacentBlocks.empty())
 					{
-						auto targetLB = listRandomiser(state.rng, adjacentBlocks);
+						auto targetLB = pickRandom(state.rng, adjacentBlocks);
 						auto targetPos = state.current_battle->blockCenterPos[type][targetLB];
 						// Try 10 times to pick a valid position in that block, otherwise run to
 						// it's center
@@ -122,7 +122,7 @@ std::tuple<AIDecision, bool> UnitAILowMorale::think(GameState &state, BattleUnit
 				// 20% chance to attack a friendly, 40% chance to attack an enemy, 40% chance to
 				// attack random tile
 				int shootType = roll < 20 ? 1 : (roll < 60 ? 2 : 3);
-				// Intentional fall-through in case we cannot find a vaild target
+				// Intentional fall-through in case we cannot find a valid target
 				switch (shootType)
 				{
 					case 1:
@@ -143,7 +143,7 @@ std::tuple<AIDecision, bool> UnitAILowMorale::think(GameState &state, BattleUnit
 						}
 						if (!victims.empty())
 						{
-							auto victim = listRandomiser(state.rng, victims);
+							auto victim = pickRandom(state.rng, victims);
 							if (!canFire)
 							{
 								decision.movement = mksp<AIMovement>();
@@ -169,7 +169,7 @@ std::tuple<AIDecision, bool> UnitAILowMorale::think(GameState &state, BattleUnit
 						// Pick a random visible enemy
 						if (!u.visibleEnemies.empty())
 						{
-							auto target = setRandomiser(state.rng, u.visibleEnemies);
+							auto target = pickRandom(state.rng, u.visibleEnemies);
 							if (!canFire)
 							{
 								decision.movement = mksp<AIMovement>();
@@ -228,4 +228,4 @@ std::tuple<AIDecision, bool> UnitAILowMorale::think(GameState &state, BattleUnit
 	}
 	return std::make_tuple(AIDecision(), true);
 }
-}
+} // namespace OpenApoc

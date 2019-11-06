@@ -2,6 +2,8 @@
 #include "framework/configfile.h"
 #include "framework/data.h"
 #include "framework/framework.h"
+#include "framework/modinfo.h"
+#include "framework/options.h"
 #include "framework/sound.h"
 #include "framework/trace.h"
 #include "game/state/battle/battle.h"
@@ -63,7 +65,7 @@ GameState::~GameState()
 	{
 		auto vehicle = v.second;
 		vehicle->removeFromMap(*this);
-		// Detatch some back-pointers otherwise we get circular sp<> depedencies and leak
+		// Detach some back-pointers otherwise we get circular sp<> dependencies and leak
 		// FIXME: This is not a 'good' way of doing this, maybe add a destroyVehicle() function? Or
 		// make StateRefWeak<> or something?
 		//
@@ -134,7 +136,11 @@ StateRef<Organisation> GameState::getCivilian() { return this->civilian; }
 
 void GameState::initState()
 {
-	// FIXME: reseed rng when game starts
+	// the LuaGameState has not been initialized if we're loading a saved game
+	if (!luaGameState)
+	{
+		luaGameState.init(*this);
+	}
 
 	if (current_battle)
 	{
@@ -178,8 +184,9 @@ void GameState::initState()
 		for (auto &v : this->vehicles)
 		{
 			auto vehicle = v.second;
-			if (vehicle->city == city && !vehicle->currentBuilding)
+			if (vehicle->city == city && !vehicle->currentBuilding && !vehicle->betweenDimensions)
 			{
+
 				city->map->addObjectToMap(*this, vehicle);
 			}
 			vehicle->strategyImages = city_common_image_list->strategyImages;
@@ -200,7 +207,7 @@ void GameState::initState()
 	{
 		for (auto &w : t.second->weapon_types)
 		{
-			w->ammo_types.emplace_back(this, t.first);
+			w->ammo_types.emplace(this, t.first);
 		}
 	}
 	for (auto &a : this->agent_types)
@@ -212,7 +219,7 @@ void GameState::initState()
 		a.second->leftHandItem = a.second->getFirstItemInSlot(EquipmentSlotType::LeftHand, false);
 		a.second->rightHandItem = a.second->getFirstItemInSlot(EquipmentSlotType::RightHand, false);
 	}
-	// Run nessecary methods for different types
+	// Run necessary methods for different types
 	research.updateTopicList();
 	// Apply mods (Stub until we actually have mods)
 	applyMods();
@@ -222,37 +229,7 @@ void GameState::initState()
 	skipTurboCalculations = config().getBool("OpenApoc.NewFeature.SkipTurboMovement");
 }
 
-void GameState::applyMods()
-{
-	if (config().getBool("OpenApoc.Mod.ATVTank"))
-	{
-		vehicle_types["VEHICLETYPE_GRIFFON_AFV"]->type = VehicleType::Type::ATV;
-	}
-	else
-	{
-		vehicle_types["VEHICLETYPE_GRIFFON_AFV"]->type = VehicleType::Type::Road;
-	}
-
-	if (config().getBool("OpenApoc.Mod.BSKLauncherSound"))
-	{
-		agent_equipment["AEQUIPMENTTYPE_BRAINSUCKER_LAUNCHER"]->fire_sfx =
-		    fw().data->loadSample("RAWSOUND:xcom3/rawsound/tactical/weapons/sucklaun.raw:22050");
-	}
-	else
-	{
-		agent_equipment["AEQUIPMENTTYPE_BRAINSUCKER_LAUNCHER"]->fire_sfx =
-		    fw().data->loadSample("RAWSOUND:xcom3/rawsound/tactical/weapons/powers.raw:22050");
-	}
-
-	bool crashVehicles = config().getBool("OpenApoc.Mod.CrashingVehicles");
-	for (auto &e : vehicle_types)
-	{
-		if (e.second->type != VehicleType::Type::UFO)
-		{
-			e.second->crash_health = crashVehicles ? e.second->health / 7 : 0;
-		}
-	}
-}
+void GameState::applyMods() { luaGameState.callHook("applyMods", 0, 0); }
 
 void GameState::setCurrentCity(StateRef<City> city)
 {
@@ -507,16 +484,22 @@ void GameState::fillOrgStartingProperty()
 		o.second->updateHirableAgents(*this);
 		for (auto &m : o.second->missions[{this, "CITYMAP_HUMAN"}])
 		{
-			m.next += gameTime.getTicks() + randBoundsInclusive(rng, (uint64_t)0,
-			                                                    m.pattern.maxIntervalRepeat -
-			                                                        m.pattern.minIntervalRepeat) -
-			          m.pattern.minIntervalRepeat / 2;
+			m.next +=
+			    gameTime.getTicks() +
+			    randBoundsInclusive(rng, (uint64_t)0,
+			                        m.pattern.maxIntervalRepeat - m.pattern.minIntervalRepeat) -
+			    m.pattern.minIntervalRepeat / 2;
 		}
 	}
+
+	luaGameState.callHook("newGamePostInit", 0, 0);
 }
 
 void GameState::startGame()
 {
+	luaGameState.init(*this);
+	luaGameState.callHook("newGame", 0, 0);
+
 	agentEquipmentTemplates.resize(10);
 
 	// Setup orgs
@@ -632,7 +615,7 @@ void GameState::startGame()
 // Fills out initial player property
 void GameState::fillPlayerStartingProperty()
 {
-	// Create the intial starting base
+	// Create the initial starting base
 	// Randomly shuffle buildings until we find one with a base layout
 	sp<City> humanCity = this->cities["CITYMAP_HUMAN"];
 	setCurrentCity({this, humanCity});
@@ -677,7 +660,8 @@ void GameState::fillPlayerStartingProperty()
 		v->homeBuilding = v->currentBuilding;
 		for (auto &eq : pair.second)
 		{
-			v->addEquipment(*this, eq);
+			auto device = v->addEquipment(*this, eq);
+			device->ammo = eq->max_ammo;
 		}
 	}
 	// Give the player initial vehicle equipment
@@ -766,111 +750,6 @@ void GameState::fillPlayerStartingProperty()
 	bld->city->cityViewScreenCenter = {buildingCenter.x, buildingCenter.y, 1.0f};
 }
 
-void GameState::updateEconomy()
-{
-	std::list<UString> newItems;
-
-	for (auto &v : vehicle_types)
-	{
-		if (economy.find(v.first) != economy.end())
-		{
-			if (economy[v.first].update(*this, v.second->manufacturer == getPlayer()))
-			{
-				newItems.push_back(v.second->name);
-			}
-		}
-	}
-	for (auto &ve : vehicle_equipment)
-	{
-		if (economy.find(ve.first) != economy.end())
-		{
-			if (economy[ve.first].update(*this, ve.second->manufacturer == getPlayer()))
-			{
-				newItems.push_back(ve.second->name);
-			}
-		}
-	}
-	for (auto &va : vehicle_ammo)
-	{
-		if (economy.find(va.first) != economy.end())
-		{
-			if (economy[va.first].update(*this, va.second->manufacturer == getPlayer()))
-			{
-				newItems.push_back(va.second->name);
-			}
-		}
-	}
-	for (auto &ae : agent_equipment)
-	{
-		if (economy.find(ae.first) != economy.end())
-		{
-			if (economy[ae.first].update(*this, ae.second->manufacturer == getPlayer()))
-			{
-				newItems.push_back(ae.second->name);
-			}
-		}
-	}
-
-	if (!newItems.empty())
-	{
-		LogWarning("Notify that new items are here!");
-		for (auto &s : newItems)
-		{
-			LogWarning("%s", s);
-		}
-	}
-}
-
-void OpenApoc::GameState::updateUFOGrowth()
-{
-	int week = this->gameTime.getWeek();
-	auto growth = this->ufo_growth_lists.find(format("%s%d", UFOGrowth::getPrefix(), week));
-	if (growth == this->ufo_growth_lists.end())
-	{
-		growth = this->ufo_growth_lists.find(format("%s%s", UFOGrowth::getPrefix(), "DEFAULT"));
-	}
-	auto limit = this->ufo_growth_lists.find(format("%s%s", UFOGrowth::getPrefix(), "LIMIT"));
-
-	if (growth != this->ufo_growth_lists.end())
-	{
-		StateRef<City> city = {this, "CITYMAP_ALIEN"};
-		StateRef<Organisation> alienOrg = {this, "ORG_ALIEN"};
-		std::uniform_int_distribution<int> xyPos(20, 120);
-
-		// Set a list of limits for vehicle types
-		std::map<UString, int> vehicleLimits;
-		// Increase value by limit
-		for (auto &v : limit->second->vehicleTypeList)
-		{
-			vehicleLimits[v.first] += v.second;
-		}
-		// Subtract existing vehicles
-		for (auto &v : vehicles)
-		{
-			if (v.second->owner == alienOrg && v.second->city == city)
-			{
-				vehicleLimits[v.second->type.id]--;
-			}
-		}
-
-		for (auto &vehicleEntry : growth->second->vehicleTypeList)
-		{
-			auto vehicleType = this->vehicle_types.find(vehicleEntry.first);
-			if (vehicleType != this->vehicle_types.end())
-			{
-				int toAdd = std::min(vehicleEntry.second, vehicleLimits[vehicleEntry.first]);
-				for (int i = 0; i < toAdd; i++)
-				{
-					auto &type = (*vehicleType).second;
-
-					auto v = city->placeVehicle(*this, {this, (*vehicleType).first}, alienOrg,
-					                            {xyPos(rng), xyPos(rng), city->size.z - 1});
-				}
-			}
-		}
-	}
-}
-
 void GameState::invasion()
 {
 	auto invadedCity = StateRef<City>{this, "CITYMAP_HUMAN"};
@@ -907,7 +786,7 @@ void GameState::invasion()
 		preference = this->ufo_mission_preference.find(
 		    format("%s%s", UFOMissionPreference::getPrefix(), "DEFAULT"));
 	}
-	auto missionType = listRandomiser(rng, preference->second->missionList);
+	auto missionType = pickRandom(rng, preference->second->missionList);
 	// Compile list of missions rated by priority
 	std::map<int, sp<UFOIncursion>> incursions;
 	for (auto &e : ufo_incursions)
@@ -1007,7 +886,7 @@ void GameState::invasion()
 			std::list<StateRef<Vehicle>> escortedRandomized;
 			while (!escortedCopy.empty())
 			{
-				auto item = setRandomiser(rng, escortedCopy);
+				auto item = pickRandom(rng, escortedCopy);
 				escortedCopy.erase(item);
 				escortedRandomized.push_back(item);
 			}
@@ -1091,7 +970,7 @@ void GameState::update(unsigned int ticks)
 		// Roll back to time before battle and stuff
 		if (gameTimeBeforeBattle.getTicks() != 0)
 		{
-			upateAfterBattle();
+			updateAfterBattle();
 		}
 
 		Trace::start("GameState::update::cities");
@@ -1327,24 +1206,7 @@ void GameState::updateEndOfDay()
 	Trace::end("GameState::updateEndOfDay::cities");
 }
 
-void GameState::updateEndOfWeek()
-{
-	LogWarning("Implement economy for orgs, for now just give em cash");
-	for (auto &o : organisations)
-	{
-		if (o.first == player.id)
-		{
-			continue;
-		}
-		if (o.second->balance < 100000)
-		{
-			o.second->balance = 100000;
-		}
-	}
-
-	updateUFOGrowth();
-	updateEconomy();
-}
+void GameState::updateEndOfWeek() { luaGameState.callHook("updateEndOfWeek", 0, 0); }
 
 void GameState::updateTurbo()
 {
@@ -1386,11 +1248,10 @@ void GameState::updateBeforeBattle()
 	// Save time to roll back to
 	gameTimeBeforeBattle = GameTime(gameTime.getTicks());
 	// Some useless event just to know if something was reported
-	eventFromBattle = GameEventType::WeeklyReport;
-	missionLocationBattle = current_battle->mission_location_id;
+	eventFromBattle = GameEventType::None;
 }
 
-void GameState::upateAfterBattle()
+void GameState::updateAfterBattle()
 {
 	gameTime = GameTime(gameTimeBeforeBattle.getTicks());
 	gameTimeBeforeBattle = GameTime(0);
@@ -1430,6 +1291,8 @@ void GameState::upateAfterBattle()
 			fw().pushEvent(new GameEvent(eventFromBattle));
 			break;
 		}
+		default:
+			break;
 	}
 }
 
@@ -1480,6 +1343,33 @@ int GameScore::getTotal()
 {
 	return tacticalMissions + researchCompleted + alienIncidents + craftShotDownUFO +
 	       craftShotDownXCom + incursions + cityDamage;
+}
+
+void GameState::loadMods()
+{
+	auto mods = Options::modList.get().split(":");
+	for (const auto &modString : mods)
+	{
+		LogWarning("loading mod \"%s\"", modString);
+		auto modPath = Options::modPath.get() + "/" + modString;
+		auto modInfo = ModInfo::getInfo(modPath);
+		if (!modInfo)
+		{
+			LogError("Failed to load ModInfo for mod \"%s\"", modString);
+			continue;
+		}
+		LogWarning("Loaded modinfo for mod ID \"%s\"", modInfo->getID());
+		if (modInfo->getStatePath() != "")
+		{
+			auto modStatePath = modPath + "/" + modInfo->getStatePath();
+			LogWarning("Loading mod gamestate \"%s\"", modStatePath);
+
+			if (!this->loadGame(modStatePath))
+			{
+				LogError("Failed to load mod ID \"%s\"", modInfo->getID());
+			}
+		}
+	}
 }
 
 }; // namespace OpenApoc

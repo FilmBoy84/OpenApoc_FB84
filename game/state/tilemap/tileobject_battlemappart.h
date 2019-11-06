@@ -21,7 +21,7 @@ class TileObjectBattleMapPart : public TileObject
 
 	sp<BattleMapPart> getOwner() const;
 
-	bool hasVoxelMap(bool los) const override { return true; }
+	bool hasVoxelMap(bool los [[maybe_unused]]) const override { return true; }
 	sp<VoxelMap> getVoxelMap(Vec3<int> mapIndex, bool los) const override;
 	Vec3<float> getPosition() const override;
 	float getZOrder() const override;
@@ -37,4 +37,4 @@ class TileObjectBattleMapPart : public TileObject
 	friend class TileMap;
 	TileObjectBattleMapPart(TileMap &map, sp<BattleMapPart> map_part);
 };
-}
+} // namespace OpenApoc

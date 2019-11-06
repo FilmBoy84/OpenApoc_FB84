@@ -3,6 +3,7 @@
 #endif
 
 #include "framework/data.h"
+#include "framework/filesystem.h"
 #include "framework/framework.h"
 #include "framework/fs.h"
 #include "framework/logger.h"
@@ -220,6 +221,22 @@ std::unique_ptr<char[]> IFile::readAll()
 
 IFile::~IFile() = default;
 
+bool FileSystem::addPath(const UString &newPath)
+{
+	if (!PHYSFS_mount(newPath.cStr(), "/", 0))
+	{
+		LogInfo("Failed to add resource dir \"%s\", error: %s", newPath,
+		        PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
+		return false;
+	}
+	else
+	{
+		LogInfo("Resource dir \"%s\" mounted to \"%s\"", newPath,
+		        PHYSFS_getMountPoint(newPath.cStr()));
+		return true;
+	}
+}
+
 FileSystem::FileSystem(std::vector<UString> paths)
 {
 	// FIXME: Is this the right thing to do that?
@@ -238,6 +255,19 @@ FileSystem::FileSystem(std::vector<UString> paths)
 		else
 			LogInfo("Resource dir \"%s\" mounted to \"%s\"", p, PHYSFS_getMountPoint(p.cStr()));
 	}
+	auto current_path = fs::current_path();
+	auto canonical_current_path = fs::canonical(current_path);
+
+	LogInfo("Current path: \"%s\"", canonical_current_path);
+
+	LogInfo("Physfs search dirs:");
+	char **search_paths = PHYSFS_getSearchPath();
+	int index = 0;
+	for (char **i = search_paths; *i != NULL; i++)
+		LogInfo("%d: \"%s\"", index++, *i);
+
+	PHYSFS_freeList(search_paths);
+
 	this->writeDir = PHYSFS_getPrefDir(PROGRAM_ORGANISATION, PROGRAM_NAME);
 	LogInfo("Setting write directory to \"%s\"", this->writeDir);
 	PHYSFS_setWriteDir(this->writeDir.cStr());
@@ -247,7 +277,7 @@ FileSystem::FileSystem(std::vector<UString> paths)
 
 FileSystem::~FileSystem() = default;
 
-IFile FileSystem::open(const UString &path)
+IFile FileSystem::open(const UString &path) const
 {
 	TRACE_FN_ARGS1("PATH", path);
 	IFile f;

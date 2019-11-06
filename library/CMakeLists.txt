@@ -2,7 +2,7 @@
 PROJECT(OpenApoc_Library CXX C)
 
 # check cmake version
-CMAKE_MINIMUM_REQUIRED(VERSION 3.1)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.9)
 
 find_package(Boost REQUIRED COMPONENTS locale)
 
@@ -10,11 +10,13 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package (Threads REQUIRED)
 
 set (LIBRARY_SOURCE_FILES
+	colour.cpp
 	strings.cpp
 	voxel.cpp)
 source_group(library\\sources FILES ${LIBRARY_SOURCE_FILES})
 set (LIBRARY_HEADER_FILES
 	colour.h
+	enum_traits.h
 	rect.h
 	sp.h
 	strings.h
@@ -23,8 +25,7 @@ set (LIBRARY_HEADER_FILES
 	resource.h
 	voxel.h
 	line.h
-	xorshift.h
-	vector_remove.h)
+	xorshift.h)
 source_group(library\\headers FILES ${LIBRARY_HEADER_FILES})
 
 list(APPEND ALL_SOURCE_FILES ${LIBRARY_SOURCE_FILES})
@@ -39,8 +40,7 @@ target_link_libraries(OpenApoc_Library PUBLIC ${Boost_LIBRARIES}
 target_include_directories(OpenApoc_Library PUBLIC ${CMAKE_SOURCE_DIR})
 target_include_directories(OpenApoc_Library PUBLIC ${GLM_INCLUDE_DIR})
 target_include_directories(OpenApoc_Library PUBLIC ${Boost_INCLUDE_DIRS})
-
-set_property(TARGET OpenApoc_Library PROPERTY CXX_STANDARD 11)
+target_include_directories(OpenApoc_Library PUBLIC ${CMAKE_SOURCE_DIR}/library/compat)
 if(NOT WIN32)
 	target_compile_definitions(OpenApoc_Library PUBLIC PTHREADS_AVAILABLE)
 endif()

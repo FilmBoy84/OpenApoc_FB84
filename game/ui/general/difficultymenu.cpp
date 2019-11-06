@@ -1,9 +1,13 @@
 #include "game/ui/general/difficultymenu.h"
 #include "forms/form.h"
 #include "forms/ui.h"
+#include "framework/configfile.h"
+#include "framework/data.h"
 #include "framework/event.h"
 #include "framework/framework.h"
 #include "framework/keycodes.h"
+#include "framework/modinfo.h"
+#include "framework/options.h"
 #include "game/state/city/city.h"
 #include "game/state/gamestate.h"
 #include "game/ui/general/loadingscreen.h"
@@ -27,23 +31,19 @@ void DifficultyMenu::resume() {}
 
 void DifficultyMenu::finish() {}
 
-std::shared_future<void> loadGame(const UString &path, sp<GameState> state)
+std::shared_future<void> loadGame(const UString &difficulty, sp<GameState> state)
 {
-	auto loadTask = fw().threadPoolEnqueue([path, state]() -> void {
-		if (!state->loadGame(fw().getDataDir() + "/gamestate_common"))
-		{
-			LogError("Failed to load common gamestate");
-			return;
-		}
-		if (!state->loadGame(fw().getDataDir() + "/" + path))
-		{
-			LogError("Failed to load '%s'", path);
-			return;
-		}
+	auto loadTask = fw().threadPoolEnqueue([difficulty, state]() -> void {
+		state->loadMods();
+		// FIXME: Make the difficulty load after the base but before any other mods?
+		// Maybe make loading states possible as a result of another state? Some "on_load" hook?
+		auto difficultyPatchPath = Options::modPath.get() + "/base/" + difficulty;
+		state->loadGame(difficultyPatchPath);
+
 		state->startGame();
 		state->initState();
-		state->fillOrgStartingProperty();
 		state->fillPlayerStartingProperty();
+		state->fillOrgStartingProperty();
 		return;
 	});
 

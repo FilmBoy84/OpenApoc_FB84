@@ -334,7 +334,7 @@ void City::generatePortals(GameState &state)
 				map->addObjectToMap(doodad);
 				this->portals.push_back(doodad);
 			}
-			auto pos = listRandomiser(state.rng, initial_portals);
+			auto pos = pickRandom(state.rng, initial_portals);
 			cityViewScreenCenter = pos;
 		}
 		else
@@ -504,7 +504,7 @@ void City::repairScenery(GameState &state)
 	}
 }
 
-void City::repairVehicles(GameState &state)
+void City::repairVehicles(GameState &state [[maybe_unused]])
 {
 	for (auto &b : buildings)
 	{
@@ -523,7 +523,7 @@ void City::repairVehicles(GameState &state)
 			if (!vehiclesToRepair.empty())
 			{
 				int repairPerVehicle = std::max(1, repairPoints / (int)vehiclesToRepair.size());
-				// Twice since we can have a situiaton like 1 repair bay and 7 vehicles,
+				// Twice since we can have a situation like 1 repair bay and 7 vehicles,
 				// in this case we repair them for 1 and we have 5 points remaining
 				// which we assign again
 				for (int i = 0; i < 2; i++)
@@ -827,7 +827,7 @@ void City::accuracyAlgorithmCity(GameState &state, Vec3<float> firePosition, Vec
 
 void RoadSegment::notifyRoadChange(const Vec3<int> &position, bool newIntact)
 {
-	for (int i = 0; i < tilePosition.size(); i++)
+	for (size_t i = 0; i < tilePosition.size(); i++)
 	{
 		if (tilePosition.at(i) == position)
 		{
@@ -836,7 +836,7 @@ void RoadSegment::notifyRoadChange(const Vec3<int> &position, bool newIntact)
 		}
 	}
 	intact = true;
-	for (int i = 0; i < tileIntact.size(); i++)
+	for (size_t i = 0; i < tileIntact.size(); i++)
 	{
 		if (!tileIntact[i])
 		{
@@ -880,7 +880,7 @@ bool RoadSegment::getIntactByConnectID(int id) const
 
 bool RoadSegment::getIntactByTile(const Vec3<int> &position) const
 {
-	for (int i = 0; i < tilePosition.size(); i++)
+	for (size_t i = 0; i < tilePosition.size(); i++)
 	{
 		if (tilePosition[i] == position)
 		{

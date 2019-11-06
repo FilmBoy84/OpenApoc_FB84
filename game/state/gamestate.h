@@ -4,6 +4,7 @@
 #include "game/state/city/research.h"
 #include "game/state/gameeventtypes.h"
 #include "game/state/gametime.h"
+#include "game/state/luagamestate.h"
 #include "game/state/shared/agent.h"
 #include "game/state/stateobject.h"
 #include "library/sp.h"
@@ -145,7 +146,7 @@ class GameState : public std::enable_shared_from_this<GameState>
 	GameTime gameTimeBeforeBattle = GameTime(0);
 	UString missionLocationBattle;
 	UString eventFromBattleText;
-	GameEventType eventFromBattle;
+	GameEventType eventFromBattle = GameEventType::None;
 
 	// Used to generate unique names, an incrementing ID for each object type (keyed by StateObject
 	// prefix)
@@ -177,9 +178,14 @@ class GameState : public std::enable_shared_from_this<GameState>
 	// high level api for saving game
 	// WARNING! Does not save metadata
 	bool saveGame(const UString &path, bool pack = true, bool pretty = false);
+	bool saveGameDelta(const UString &path, const GameState &reference, bool pack = true,
+	                   bool pretty = false);
 
 	// serializes gamestate to archive
 	bool serialize(SerializationArchive *archive) const;
+	// Serializes gamestate to archive with a reference (IE values the same as the reference are not
+	// saved)
+	bool serialize(SerializationArchive *archive, const GameState &reference) const;
 
 	// deserializes gamestate from archive
 	bool deserialize(SerializationArchive *archive);
@@ -206,9 +212,6 @@ class GameState : public std::enable_shared_from_this<GameState>
 	// Fills out initial player property
 	void fillPlayerStartingProperty();
 
-	void updateEconomy();
-	void updateUFOGrowth();
-
 	void invasion();
 
 	// Returns true if we can go at max speed (IE push all update loops to 5 minute intervals -
@@ -231,7 +234,7 @@ class GameState : public std::enable_shared_from_this<GameState>
 	void updateAfterTurbo();
 
 	void updateBeforeBattle();
-	void upateAfterBattle();
+	void updateAfterBattle();
 
 	void updateEndOfSecond();
 	void updateEndOfFiveMinutes();
@@ -244,6 +247,12 @@ class GameState : public std::enable_shared_from_this<GameState>
 	// Following members are not serialized
 	bool newGame = false;
 	bool skipTurboCalculations = false;
+
+	LuaGameState luaGameState;
+
+	// Loads all mods set in the options - note this likely requires the mod data directories to
+	// already be added to the filesystem
+	void loadMods();
 };
 
 }; // namespace OpenApoc

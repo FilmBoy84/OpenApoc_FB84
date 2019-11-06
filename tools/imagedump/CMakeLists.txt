@@ -2,7 +2,7 @@
 PROJECT(OpenApoc_ImageDump CXX C)
 
 # check cmake version
-CMAKE_MINIMUM_REQUIRED(VERSION 3.1)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.9)
 
 set (IMAGEDUMP_SOURCE_FILES
 	imagedump.cpp)
@@ -15,6 +15,3 @@ set( EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin )
 
 target_link_libraries(OpenApoc_ImageDump OpenApoc_Library)
 target_link_libraries(OpenApoc_ImageDump OpenApoc_Framework)
-
-set_property(TARGET OpenApoc_ImageDump PROPERTY CXX_STANDARD 11)
-set_property(TARGET OpenApoc_ImageDump PROPERTY CXX_STANDARD_REQUIRED ON)

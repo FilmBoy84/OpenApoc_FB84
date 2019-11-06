@@ -50,12 +50,14 @@ class BattleHazard : public std::enable_shared_from_this<BattleHazard>
 	            bool fireSmoke = false);
 	void grow(GameState &state);
 	void applyEffect(GameState &state);
-	void die(GameState &state, bool violently = true);
+	void die(GameState &state, bool violently);
+	void dieAndRemove(GameState &state, bool violently);
 	void updateTileVisionBlock(GameState &state);
 
-	void update(GameState &state, unsigned int ticks);
-	void updateInner(GameState &state, unsigned int ticks);
-	void updateTB(GameState &state);
+	// these return true if this hazard has died and needs to be deleted
+	bool update(GameState &state, unsigned int ticks);
+	bool updateInner(GameState &state, unsigned int ticks);
+	bool updateTB(GameState &state);
 
 	BattleHazard() = default;
 	BattleHazard(GameState &state, StateRef<DamageType> damageType, bool delayVisibility = true);
@@ -78,7 +80,7 @@ We have 12 frames for fire. Let's number them 0 to 11 where 0 is full force fire
 
 Let "Stage" be the value that controls the fire's current state, and what frame we use.
 
-When fire is applied (Incendary missile or grenade), Stage = 10 - random[0-2] * 0,6
+When fire is applied (Incendiary missile or grenade), Stage = 10 - random[0-2] * 0,6
 (here [] are inclusive brackets, as in widely accepted math notation)
 
 Each 2 seconds Stage is decreased by 0,6 until it reaches 1.
@@ -92,7 +94,7 @@ What this gives us is a progression that looks like this:
 Now, if we then round this value to nearest 0,5 we get progression that looks like this:
     10 - 9,5 - 9 - 8 - 7,5 - 7 - 6,5 ....
 
-Now, if we add 0,5 and round up, or substract 0,5 and round down, we get the possible frames
+Now, if we add 0,5 and round up, or subtract 0,5 and round down, we get the possible frames
 that the fire can show at every stage! One extra rule: frame 11 is reserved for dying flames
 
 We get the following progression:

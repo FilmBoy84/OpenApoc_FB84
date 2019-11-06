@@ -67,7 +67,7 @@ class TransactionScreen : public BaseStage
 	sp<Label> textViewBaseStatic;
 
 	Type type;
-	// Wether player must conform to limits even on bases which did not change
+	// Whether player must conform to limits even on bases which did not change
 	bool forceLimits;
 	std::map<Type, std::list<sp<TransactionControl>>> transactionControls;
 
@@ -114,6 +114,9 @@ class TransactionScreen : public BaseStage
 	virtual void executeOrders() = 0;
 	// Initialisation the mini view for the second base.
 	virtual void initViewSecondBase();
+
+	sp<TransactionControl> findControlById(Type type, const UString &itemId);
+	sp<TransactionControl> findControlById(const UString &itemId);
 
   public:
 	TransactionScreen(sp<GameState> state, bool forceLimits = false);

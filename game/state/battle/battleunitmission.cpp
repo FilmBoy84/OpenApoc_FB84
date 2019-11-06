@@ -28,7 +28,7 @@ static const std::map<int, Vec2<int>> dir_facing_map = {{0, {0, -1}}, {1, {1, -1
 static const std::list<Vec3<float>> angles = {
     {0, -1, 0}, {1, -1, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0}, {-1, 1, 0}, {-1, 0, 0}, {-1, -1, 0},
 };
-}
+} // namespace
 
 BattleUnitTileHelper::BattleUnitTileHelper(TileMap &map, BattleUnitType type, bool allowJumping)
     : BattleUnitTileHelper(
@@ -69,12 +69,15 @@ float BattleUnitTileHelper::getDistanceStatic(Vec3<float> from, Vec3<float> toSt
 {
 	auto diffStart = toStart - from;
 	auto diffEnd = toEnd - from - Vec3<float>{1.0f, 1.0f, 1.0f};
-	auto xDiff = from.x >= toStart.x && from.x < toEnd.x ? 0.0f : std::min(std::abs(diffStart.x),
-	                                                                       std::abs(diffEnd.x));
-	auto yDiff = from.y >= toStart.y && from.y < toEnd.y ? 0.0f : std::min(std::abs(diffStart.y),
-	                                                                       std::abs(diffEnd.y));
-	auto zDiff = from.z >= toStart.z && from.z < toEnd.z ? 0.0f : std::min(std::abs(diffStart.z),
-	                                                                       std::abs(diffEnd.z));
+	auto xDiff = from.x >= toStart.x && from.x < toEnd.x
+	                 ? 0.0f
+	                 : std::min(std::abs(diffStart.x), std::abs(diffEnd.x));
+	auto yDiff = from.y >= toStart.y && from.y < toEnd.y
+	                 ? 0.0f
+	                 : std::min(std::abs(diffStart.y), std::abs(diffEnd.y));
+	auto zDiff = from.z >= toStart.z && from.z < toEnd.z
+	                 ? 0.0f
+	                 : std::min(std::abs(diffStart.z), std::abs(diffEnd.z));
 	return (std::max(std::max(xDiff, yDiff), zDiff) + xDiff + yDiff + zDiff) * 2.0f;
 }
 
@@ -179,8 +182,9 @@ bool BattleUnitTileHelper::canEnterTile(Tile *from, Tile *to, bool allowJumping,
 			auto middle = map.getTile(fromPos + (toPos - fromPos) / 2);
 			if (canEnterTile(from, middle, true, jumped, cost, doorInTheWay, ignoreStaticUnits,
 			                 ignoreMovingUnits, ignoreAllUnits) &&
-			    jumped && canEnterTile(middle, to, false, jumped, cost, doorInTheWay,
-			                           ignoreStaticUnits, ignoreMovingUnits, ignoreAllUnits))
+			    jumped &&
+			    canEnterTile(middle, to, false, jumped, cost, doorInTheWay, ignoreStaticUnits,
+			                 ignoreMovingUnits, ignoreAllUnits))
 			{
 				return true;
 			}
@@ -190,25 +194,25 @@ bool BattleUnitTileHelper::canEnterTile(Tile *from, Tile *to, bool allowJumping,
 
 	// Tiles used by big units
 	Tile *fromX1 = nullptr;  // from (x-1, y, z)
-	Vec3<int> fromX1Pos;     // fromPos (x-1, y, z)
+	Vec3<int> fromX1Pos(0);  // fromPos (x-1, y, z)
 	Tile *fromY1 = nullptr;  // from (x, y-1, z)
-	Vec3<int> fromY1Pos;     // fromPos (x, y-1, z)
+	Vec3<int> fromY1Pos(0);  // fromPos (x, y-1, z)
 	Tile *fromXY1 = nullptr; // from (x-1, y-1, z)
-	Vec3<int> fromXY1Pos;    // fromPos (x-1, y-1, z)
+	Vec3<int> fromXY1Pos(0); // fromPos (x-1, y-1, z)
 	Tile *toX1 = nullptr;    // to (x-1, y, z)
-	Vec3<int> toX1Pos;       // toPos (x-1, y, z)
+	Vec3<int> toX1Pos(0);    // toPos (x-1, y, z)
 	Tile *toY1 = nullptr;    // to (x, y-1, z)
-	Vec3<int> toY1Pos;       // toPos (x, y-1, z)
+	Vec3<int> toY1Pos(0);    // toPos (x, y-1, z)
 	Tile *toXY1 = nullptr;   // to (x-1, y-1, z)
-	Vec3<int> toXY1Pos;      // toPos (x-1, y-1, z)
+	Vec3<int> toXY1Pos(0);   // toPos (x-1, y-1, z)
 	Tile *toZ1 = nullptr;    // to (x, y, z-1)
-	Vec3<int> toZ1Pos;       // toPos (x, y, z-1)
+	Vec3<int> toZ1Pos(0);    // toPos (x, y, z-1)
 	Tile *toXZ1 = nullptr;   // to (x-1, y, z-1)
-	Vec3<int> toXZ1Pos;      // toPos (x-1, y, z-1)
+	Vec3<int> toXZ1Pos(0);   // toPos (x-1, y, z-1)
 	Tile *toYZ1 = nullptr;   // to (x, y-1, z-1)
-	Vec3<int> toYZ1Pos;      // toPos (x, y-1, z-1)
+	Vec3<int> toYZ1Pos(0);   // toPos (x, y-1, z-1)
 	Tile *toXYZ1 = nullptr;  // to (x-1, y-1, z-1)
-	Vec3<int> toXYZ1Pos;     // toPos (x-1, y-1, z-1)
+	Vec3<int> toXYZ1Pos(0);  // toPos (x-1, y-1, z-1)
 
 	// STEP 01: Check if "to" is passable
 	// We could just use Tile::getPassable, however, we need to make some extra calculations
@@ -1549,8 +1553,9 @@ void BattleUnitMission::update(GameState &state, BattleUnit &u, unsigned int tic
 	{
 		case Type::Jump:
 			if (!jumped && !u.falling && u.atGoal && u.facing == u.goalFacing &&
-			    u.facing == targetFacing && (u.current_body_state == u.target_body_state ||
-			                                 targetBodyState == BodyState::Jumping) &&
+			    u.facing == targetFacing &&
+			    (u.current_body_state == u.target_body_state ||
+			     targetBodyState == BodyState::Jumping) &&
 			    u.target_body_state == targetBodyState)
 			{
 				// Jumping cost assumed same as walking into tile
@@ -1658,9 +1663,8 @@ void BattleUnitMission::update(GameState &state, BattleUnit &u, unsigned int tic
 						         .empty())
 						{
 							fw().soundBackend->playSample(
-							    listRandomiser(state.rng,
-							                   targetUnit->agent->type->fatalWoundSfx.at(
-							                       targetUnit->agent->gender)),
+							    pickRandom(state.rng, targetUnit->agent->type->fatalWoundSfx.at(
+							                              targetUnit->agent->gender)),
 							    targetUnit->position);
 						}
 						break;
@@ -1801,7 +1805,9 @@ void BattleUnitMission::start(GameState &state, BattleUnit &u)
 				item = nullptr;
 
 				// Teleport unit
-				u.missions.clear();
+				// Remove all other missions
+				u.missions.remove_if(
+				    [this](const up<BattleUnitMission> &mission) { return mission.get() != this; });
 				u.stopAttacking();
 				u.setPosition(state, t->getRestingPosition(u.isLarge()), true);
 				u.resetGoal();
@@ -2118,6 +2124,7 @@ bool BattleUnitMission::advanceAlongPath(GameState &state, BattleUnit &u, Vec3<f
 	{
 		// Next tile became impassable, pick a new path
 		currentPlannedPath.clear();
+		u.addMission(state, BattleUnitMission::snooze(u, 1));
 		u.addMission(state, Type::RestartNextMission);
 		return false;
 	}
@@ -2126,7 +2133,7 @@ bool BattleUnitMission::advanceAlongPath(GameState &state, BattleUnit &u, Vec3<f
 	// --
 	// When ordering move to a unit already on the move, we can have a situation
 	// where going directly to 2nd step in the path is faster than going to the first
-	// In this case, we should skip unnesecary steps
+	// In this case, we should skip unnecessary steps
 	// --
 	// Start with position after next
 	// If the next position has a node and we can go directly to that node,
@@ -2135,10 +2142,9 @@ bool BattleUnitMission::advanceAlongPath(GameState &state, BattleUnit &u, Vec3<f
 	bool newDoorInWay = false;
 	bool newJumped = false;
 	while (it != currentPlannedPath.end() &&
-	       (tFrom->position == *it ||
-	        (allowSkipNodes &&
-	         BattleUnitTileHelper{map, u}.canEnterTile(tFrom, map.getTile(*it), !u.canFly(),
-	                                                   newJumped, newCost, newDoorInWay))))
+	       (tFrom->position == *it || (allowSkipNodes && BattleUnitTileHelper{map, u}.canEnterTile(
+	                                                         tFrom, map.getTile(*it), !u.canFly(),
+	                                                         newJumped, newCost, newDoorInWay))))
 	{
 		currentPlannedPath.pop_front();
 		it = ++currentPlannedPath.begin();
@@ -2239,7 +2245,8 @@ bool BattleUnitMission::advanceAlongPath(GameState &state, BattleUnit &u, Vec3<f
 		// FIXME: Check unit's allegiance? Will neutrals give way? I think they did in vanilla!
 		u.current_movement_state = MovementState::None;
 		// If this unit is still patient enough, and we can ask that unit to give way
-		if (giveWayAttemptsRemaining-- > 0 && blockingUnit->owner == u.owner
+		if (giveWayAttemptsRemaining-- > 0 &&
+		    blockingUnit->owner == u.owner
 		    // and we're not trying to stay there
 		    && currentPlannedPath.size() > 1
 		    // and unit we're asking is not big
@@ -2325,7 +2332,7 @@ bool BattleUnitMission::advanceAlongPath(GameState &state, BattleUnit &u, Vec3<f
 
 	// Spend stamina TB.  As per Mell from forums it takes:
 	// - 0.6 vanilla stamina to run regardless of diagonal or not
-	// - 0.85 vanilla stamina to go prone regradless of diagonal or not
+	// - 0.85 vanilla stamina to go prone regardless of diagonal or not
 	if (!realTime)
 	{
 		int staCost = 0;
@@ -2484,7 +2491,7 @@ bool BattleUnitMission::advanceBodyState(GameState &state, BattleUnit &u, BodySt
 	// Cost to reach goal is free
 	int cost =
 	    type == Type::ReachGoal ? 0 : u.getBodyStateChangeCost(u.target_body_state, targetState);
-	// If unsufficient TUs - cancel missions other than GotoLocation
+	// If insufficient TUs - cancel missions other than GotoLocation
 	if (!spendAgentTUs(state, u, cost, type != Type::GotoLocation,
 	                   targetState == BodyState::Kneeling))
 	{

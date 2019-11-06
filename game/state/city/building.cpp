@@ -230,15 +230,14 @@ void Building::updateCargo(GameState &state)
 						ferries.emplace_back(&state, t.first);
 					}
 				}
-				if (ferries.size() == 0)
+				if (ferries.empty())
 				{
 					LogError("There is no ferry type for cargo with bio = %s in the game!?",
 					         needBio);
 					return;
 				}
 				// Spawn a random vehicle type and provide service
-				auto v =
-				    city->placeVehicle(state, listRandomiser(state.rng, ferries), ferryCompany);
+				auto v = city->placeVehicle(state, pickRandom(state.rng, ferries), ferryCompany);
 				v->enterBuilding(state, thisRef);
 				v->provideService(state, true);
 				spawnedFerry = true;
@@ -281,14 +280,13 @@ void Building::updateCargo(GameState &state)
 						ferries.emplace_back(&state, t.first);
 					}
 				}
-				if (ferries.size() == 0)
+				if (ferries.empty())
 				{
 					LogError("There is no ferry type for agents in the game!?");
 					return;
 				}
 				// Spawn a random vehicle type and provide service
-				auto v =
-				    city->placeVehicle(state, listRandomiser(state.rng, ferries), ferryCompany);
+				auto v = city->placeVehicle(state, pickRandom(state.rng, ferries), ferryCompany);
 				v->enterBuilding(state, thisRef);
 				v->provideService(state, true);
 				spawnedFerry = true;
@@ -422,9 +420,8 @@ void Building::updateCargo(GameState &state)
 					// Check it agrees to ferry for this org
 					if (checkRelationship)
 					{
-						if (e.first &&
-						    v.second->owner->isRelatedTo(e.first) ==
-						        Organisation::Relation::Hostile)
+						if (e.first && v.second->owner->isRelatedTo(e.first) ==
+						                   Organisation::Relation::Hostile)
 						{
 							continue;
 						}
@@ -545,9 +542,8 @@ void Building::updateCargo(GameState &state)
 					// Check it agrees to ferry for this org
 					if (checkRelationship)
 					{
-						if (e.first &&
-						    v.second->owner->isRelatedTo(e.first) ==
-						        Organisation::Relation::Hostile)
+						if (e.first && v.second->owner->isRelatedTo(e.first) ==
+						                   Organisation::Relation::Hostile)
 						{
 							continue;
 						}
@@ -632,7 +628,7 @@ void Building::updateCargo(GameState &state)
 
 	// Step 06: Try to load cargo on owner's vehicles if:
 	// - Allowed by game option
-	// - Cargo is expriring
+	// - Cargo is expiring
 	// - Cargo had no ferries ordered for it
 	if (config().getBool("OpenApoc.NewFeature.AllowManualCargoFerry"))
 	{
@@ -868,7 +864,7 @@ void Building::alienMovement(GameState &state)
 		return;
 	}
 	// Pick one random of them
-	auto bld = listRandomiser(state.rng, neighbours);
+	auto bld = pickRandom(state.rng, neighbours);
 	// For every alien calculate move percent as:
 	//   alien's move chance + random 0..30
 	// Calculate amount of moving aliens
@@ -888,6 +884,10 @@ void Building::alienMovement(GameState &state)
 			moveAmounts[e.first] = moveAmount;
 			totalMoveAmount += moveAmount;
 		}
+	}
+	if (totalMoveAmount == 0)
+	{
+		return;
 	}
 	// Chance to move is:
 	//   15 + 3 * amount + 20 (if owner is friendly+ to aliens)
@@ -992,6 +992,21 @@ void Building::buildingPartChange(GameState &state, Vec3<int> part, bool intact)
 	}
 }
 
-bool Building::isAlive(GameState &state) const { return !buildingParts.empty(); }
+void Building::decreasePendingInvestigatorCount(GameState &state)
+{
+	--this->pendingInvestigatorCount;
+	if (this->pendingInvestigatorCount == 0)
+	{
+		fw().pushEvent(new GameBuildingEvent(GameEventType::CommenceInvestigation,
+		                                     {&state, shared_from_this()}));
+	}
+	else if (this->pendingInvestigatorCount < 0) // shouldn't happen
+	{
+		LogError("Building investigate count < 0?");
+		this->pendingInvestigatorCount = 0;
+	}
+}
+
+bool Building::isAlive(GameState &state [[maybe_unused]]) const { return !buildingParts.empty(); }
 
 } // namespace OpenApoc

@@ -5,7 +5,7 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package (Threads REQUIRED)
 
 # check cmake version
-CMAKE_MINIMUM_REQUIRED(VERSION 3.1)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.9)
 
 set (FORMS_SOURCE_FILES
 	checkbox.cpp
@@ -21,7 +21,6 @@ set (FORMS_SOURCE_FILES
 	textbutton.cpp
 	textedit.cpp
 	ticker.cpp
-	transactioncontrol.cpp
 	tristatebox.cpp
 	ui.cpp)
 source_group(forms\\sources FILES ${LIBRARY_SOURCE_FILES})
@@ -42,7 +41,6 @@ set (FORMS_HEADER_FILES
 	textbutton.h
 	textedit.h
 	ticker.h
-	transactioncontrol.h
 	tristatebox.h
 	ui.h)
 
@@ -58,6 +56,3 @@ target_link_libraries(OpenApoc_Forms PUBLIC OpenApoc_Framework
 		OpenApoc_LibPugixml)
 
 target_include_directories(OpenApoc_Forms PUBLIC ${CMAKE_SOURCE_DIR})
-
-set_property(TARGET OpenApoc_Forms PROPERTY CXX_STANDARD 11)
-

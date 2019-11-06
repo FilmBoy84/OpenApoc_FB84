@@ -56,7 +56,7 @@ void BattleTileView::updateHiddenBar()
 		totalTU += u.second->initialTU - reserve;
 		remainingTU += std::max(0, u.second->agent->modified_stats.time_units - reserve);
 	}
-	int maxWidth = clamp(width - remainingTU * width / totalTU, 0, width);
+	int maxWidth = totalTU ? clamp(width - remainingTU * width / totalTU, 0, width) : 0;
 
 	auto progressBar = mksp<RGBImage>(Vec2<int>{width, height});
 	{
@@ -317,6 +317,7 @@ BattleTileView::BattleTileView(TileMap &map, Vec3<int> isoTileSize, Vec2<int> st
 	{
 		tuIndicators.push_back(font->getString(format("%d", i)));
 	}
+	tuSeparator = font->getString("/");
 	pathPreviewTooFar = font->getString(tr("Too Far"));
 	pathPreviewUnreachable = font->getString(tr("Blocked"));
 	attackCostOutOfRange = font->getString(tr("Out of range"));
@@ -571,7 +572,8 @@ void BattleTileView::render()
 					}
 				}
 			}
-			if (previewedPathCost != -1 && drawWaypoints && waypointLocations.empty())
+			if (previewedPathCost != PreviewedPathCostSpecial::NONE && drawWaypoints &&
+			    waypointLocations.empty())
 			{
 				darkenWaypoints = true;
 				for (auto &w : pathPreview)
@@ -606,8 +608,8 @@ void BattleTileView::render()
 					// Yellow if this tile intersects with a unit
 					if (selectedTilePosition.z == z)
 					{
-						drawPathPreview = previewedPathCost != -1;
-						drawAttackCost = calculatedAttackCost != -1;
+						drawPathPreview = previewedPathCost != PreviewedPathCostSpecial::NONE;
+						drawAttackCost = calculatedAttackCost != CalculatedAttackCostSpecial::NONE;
 						auto u = selTileOnCurLevel->getUnitIfPresent(true);
 						auto unit = u ? u->getUnit() : nullptr;
 						if (unit &&
@@ -847,20 +849,68 @@ void BattleTileView::render()
 							// When done with all objects, draw the front selection image
 							if (tile == selTileOnCurLevel && layer == 0)
 							{
-								static const Vec2<int> offset = {2, -53};
+								static const Vec2<int> offset{2, -53};
+								const Vec2<int> tileScreenCoords =
+								    tileToOffsetScreenCoords(selTilePosOnCurLevel);
 
 								r.draw(selectionImageFront,
-								       tileToOffsetScreenCoords(selTilePosOnCurLevel) -
-								           selectedTileImageOffset);
-								if (drawPathPreview)
+								       tileScreenCoords - selectedTileImageOffset);
+								// drawing attack cost takes precedence over path cost
+								if (drawAttackCost)
 								{
 									sp<Image> img;
-									switch (previewedPathCost)
+									switch (static_cast<CalculatedAttackCostSpecial>(
+									    calculatedAttackCost))
 									{
-										case -3:
+										case CalculatedAttackCostSpecial::NO_WEAPON:
+											img = nullptr;
+											break;
+										case CalculatedAttackCostSpecial::NO_ARC:
+											img = attackCostNoArc;
+											break;
+										case CalculatedAttackCostSpecial::OUT_OF_RANGE:
+											img = attackCostOutOfRange;
+											break;
+										default:
+										{
+											img = nullptr;         // don't draw using img
+											if (!lastSelectedUnit) // shouldn't happen
+												LogError("Displaying attack cost without selected "
+												         "unit?!");
+											auto imgCost = tuIndicators[calculatedAttackCost];
+											auto imgStock =
+											    tuIndicators[lastSelectedUnit->agent->modified_stats
+											                     .time_units];
+											Vec2<int> offset2{(imgCost->size.x + imgStock->size.x +
+											                   tuSeparator->size.x) /
+											                      2,
+											                  tuSeparator->size.y / 2};
+											r.draw(imgCost, tileScreenCoords + offset - offset2);
+											offset2.x -= imgCost->size.x;
+											r.draw(tuSeparator,
+											       tileScreenCoords + offset - offset2);
+											offset2.x -= tuSeparator->size.x;
+											r.draw(imgStock, tileScreenCoords + offset - offset2);
+											break;
+										}
+									}
+									if (img)
+									{
+										r.draw(img,
+										       tileScreenCoords + offset -
+										           Vec2<int>{img->size.x / 2, img->size.y / 2});
+									}
+								}
+								else if (drawPathPreview)
+								{
+									sp<Image> img;
+									switch (
+									    static_cast<PreviewedPathCostSpecial>(previewedPathCost))
+									{
+										case PreviewedPathCostSpecial::UNREACHABLE:
 											img = pathPreviewUnreachable;
 											break;
-										case -2:
+										case PreviewedPathCostSpecial::TOO_FAR:
 											img = pathPreviewTooFar;
 											break;
 										default:
@@ -870,34 +920,7 @@ void BattleTileView::render()
 									if (img)
 									{
 										r.draw(img,
-										       tileToOffsetScreenCoords(selTilePosOnCurLevel) +
-										           offset -
-										           Vec2<int>{img->size.x / 2, img->size.y / 2});
-									}
-								}
-								if (drawAttackCost)
-								{
-									sp<Image> img;
-									switch (calculatedAttackCost)
-									{
-										case -4:
-											img = nullptr;
-											break;
-										case -3:
-											img = attackCostNoArc;
-											break;
-										case -2:
-											img = attackCostOutOfRange;
-											break;
-										default:
-											img = tuIndicators[calculatedAttackCost];
-											break;
-									}
-									if (img)
-									{
-										r.draw(img,
-										       tileToOffsetScreenCoords(selTilePosOnCurLevel) +
-										           offset -
+										       tileScreenCoords + offset -
 										           Vec2<int>{img->size.x / 2, img->size.y / 2});
 									}
 								}
@@ -1177,9 +1200,8 @@ void BattleTileView::render()
 					if (battle.mode == Battle::Mode::TurnBased)
 					{
 						auto &img = tuIndicators[u.second->agent->modified_stats.time_units];
-						r.draw(img,
-						       pos + offset + offsetTU -
-						           Vec2<float>{img->size.x / 2, img->size.y / 2});
+						r.draw(img, pos + offset + offsetTU -
+						                Vec2<float>{img->size.x / 2, img->size.y / 2});
 					}
 
 					for (auto &t : u.second->visibleEnemies)
@@ -1555,6 +1577,13 @@ void BattleTileView::render()
 		                      state.battle_common_sample_list->burn->format.channels;
 		fw().soundBackend->playSample(state.battle_common_sample_list->burn, closestFirePosition);
 	}
+
+	if (this->debugHotkeyMode)
+	{
+		auto font = ui().getFont("smallset");
+		auto cursorPositionString = font->getString(format("Cursor at %s", selectedTilePosition));
+		r.draw(cursorPositionString, {0, 0});
+	}
 }
 
 void BattleTileView::update()
@@ -1576,7 +1605,7 @@ void BattleTileView::resetAttackCost()
 	if (attackCostTicksAccumulated > 0)
 	{
 		attackCostTicksAccumulated = 0;
-		calculatedAttackCost = -1;
+		calculatedAttackCost = static_cast<int>(CalculatedAttackCostSpecial::NONE);
 	}
 }
 
@@ -1617,11 +1646,11 @@ void BattleTileView::resetPathPreview()
 	if (pathPreviewTicksAccumulated > 0)
 	{
 		pathPreviewTicksAccumulated = 0;
-		previewedPathCost = -1;
+		previewedPathCost = static_cast<int>(PreviewedPathCostSpecial::NONE);
 		pathPreview.clear();
 	}
 }
-}
+} // namespace OpenApoc
 
 // Alexey Andronov (Istrebitel)
 // A different algorithm is required in order to properly display big units.
@@ -1673,7 +1702,7 @@ and then skip drawing next two tiles (as we have already drawn it) and skip draw
 the tile (x-1, y+2) on the next row
 
 This is done best by having a set of Vec3<int>'s, and "skip next X tiles" variable.
-When encountering a 2-tile object, we inrement "skip next X tiles" by 1.
+When encountering a 2-tile object, we increment "skip next X tiles" by 1.
 When encountering a 3-tile object, we increment "skip next X tiles" by 2,
 and we add (x-1, y+2) to the set.
 When trying to draw a tile we first check the "skip next X tiles" variable,

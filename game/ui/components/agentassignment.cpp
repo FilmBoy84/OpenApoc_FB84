@@ -84,7 +84,8 @@ void AgentAssignment::init(sp<Form> form, Vec2<int> location, Vec2<int> size)
 			this->currentAgent = agent;
 		}
 		auto icon = c->findControl(ControlGenerator::AGENT_ICON_NAME);
-		if (agent && icon && c->isPointInsideControlBounds(e, icon))
+		if (agent && icon && c->isPointInsideControlBounds(e, icon) &&
+		    Event::isPressed(e->forms().MouseInfo.Button, Event::MouseButton::Right))
 		{
 			this->isDragged = false;
 			fw().stageQueueCommand(
@@ -103,7 +104,8 @@ void AgentAssignment::init(sp<Form> form, Vec2<int> location, Vec2<int> size)
 
 		auto vehicle = c->getData<Vehicle>();
 		auto icon = c->findControl(ControlGenerator::VEHICLE_ICON_NAME);
-		if (vehicle && icon && c->isPointInsideControlBounds(e, icon))
+		if (vehicle && icon && c->isPointInsideControlBounds(e, icon) &&
+		    Event::isPressed(e->forms().MouseInfo.Button, Event::MouseButton::Right))
 		{
 			this->isDragged = false;
 
@@ -357,7 +359,7 @@ void AgentAssignment::updateLocation()
 				    buildingLeftControl->findControl(AGENT_LIST_NAME)->setDirty();
 				    sourceRaisedBy->clearSelection();
 			    }
-			});
+		    });
 		leftList->addItem(buildingLeftControl);
 
 		auto agentLeftList = buildingLeftControl->createChild<MultilistBox>();
@@ -525,7 +527,7 @@ void AgentAssignment::addVehiclesToList(sp<MultilistBox> list, const int listOff
 				                            this->sourceRaisedBy = agentRightList;
 				                            this->isDragged = true;
 			                            }
-			                        });
+		                            });
 
 		addAgentsToList(agentRightList, offset + listOffset);
 	}
@@ -717,4 +719,4 @@ void AgentAssignment::eventOccured(Event *e)
 }
 
 void AgentAssignment::update() { Form::update(); }
-}
+} // namespace OpenApoc

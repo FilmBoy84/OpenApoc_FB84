@@ -24,6 +24,7 @@ class TacticalAI
 		Vanilla
 	};
 	Type type; // cannot hide because serializer won't work
+	virtual ~TacticalAI() = default;
 	const UString getName();
 
 	virtual void reset(GameState &, StateRef<Organisation>){};
@@ -49,4 +50,4 @@ class AIBlockTactical
 	uint64_t ticksLastThink = 0;
 	uint64_t ticksUntilReThink = 0;
 };
-}
+} // namespace OpenApoc

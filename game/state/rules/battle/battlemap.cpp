@@ -1,4 +1,5 @@
 #include "game/state/rules/battle/battlemap.h"
+#include "framework/configfile.h"
 #include "game/state/battle/battle.h"
 #include "game/state/battle/battledoor.h"
 #include "game/state/battle/battleitem.h"
@@ -26,7 +27,7 @@ namespace OpenApoc
 
 namespace
 {
-int getCorridorSectorID(sp<Base> base, Vec2<int> pos)
+int getCorridorSectorID(const Base &base, Vec2<int> pos)
 {
 	// key is North South West East (true = occupied, false = vacant)
 	const std::unordered_map<std::vector<bool>, int> TILE_CORRIDORS = {
@@ -44,7 +45,7 @@ int getCorridorSectorID(sp<Base> base, Vec2<int> pos)
 		LogError("Going out of bounds for base");
 		return 0;
 	}
-	else if (!base->corridors[pos.x][pos.y])
+	else if (!base.corridors[pos.x][pos.y])
 	{
 		// We need to cap any facilities
 		// For that we need to find where facilities are
@@ -54,7 +55,7 @@ int getCorridorSectorID(sp<Base> base, Vec2<int> pos)
 		{
 			facilities[i].resize(Base::SIZE);
 		}
-		for (auto &facility : base->facilities)
+		for (auto &facility : base.facilities)
 		{
 			if (facility->buildTime > 0)
 			{
@@ -78,16 +79,14 @@ int getCorridorSectorID(sp<Base> base, Vec2<int> pos)
 	}
 	else
 	{
-		bool north = pos.y > 0 && base->corridors[pos.x][pos.y - 1];
-		bool south = pos.y < Base::SIZE - 1 && base->corridors[pos.x][pos.y + 1];
-		bool west = pos.x > 0 && base->corridors[pos.x - 1][pos.y];
-		bool east = pos.x < Base::SIZE - 1 && base->corridors[pos.x + 1][pos.y];
+		bool north = pos.y > 0 && base.corridors[pos.x][pos.y - 1];
+		bool south = pos.y < Base::SIZE - 1 && base.corridors[pos.x][pos.y + 1];
+		bool west = pos.x > 0 && base.corridors[pos.x - 1][pos.y];
+		bool east = pos.x < Base::SIZE - 1 && base.corridors[pos.x + 1][pos.y];
 		return TILE_CORRIDORS.at({north, south, west, east}) - 3 + 15;
 	}
 }
-}
-
-BattleMap::BattleMap() {}
+} // namespace
 
 sp<BattleMap> BattleMap::get(const GameState &state, const UString &id)
 {
@@ -134,10 +133,12 @@ sp<Battle> BattleMap::createBattle(GameState &state, StateRef<Organisation> oppo
 	}
 	auto alienOrg = state.getAliens();
 
+	const float hostilesMultiplier = config().getFloat("OpenApoc.Cheat.HostilesMultiplier");
+
 	int countAliens = 0;
 	for (auto &a : *aliens)
 	{
-		for (int i = 0; i < a.second; i++)
+		for (int i = 0; i < std::round(a.second * hostilesMultiplier); i++)
 		{
 			player_agents.push_back(state.agent_generator.createAgent(state, alienOrg, a.first));
 			if (++countAliens >= MAX_UNITS_PER_SIDE)
@@ -169,8 +170,10 @@ sp<Battle> BattleMap::createBattle(GameState &state, StateRef<Organisation> oppo
 	std::map<StateRef<AgentType>, int> current_crew;
 	StateRef<BattleMap> map;
 
+	const float hostilesMultiplier = config().getFloat("OpenApoc.Cheat.HostilesMultiplier");
+
 	// Setup mission type and other participants
-	if (building->owner == state.getPlayer())
+	if (building->base != nullptr && building->owner == state.getPlayer())
 	{
 		// Base defense mission
 		map = {&state, "BATTLEMAP_37base"};
@@ -187,18 +190,19 @@ sp<Battle> BattleMap::createBattle(GameState &state, StateRef<Organisation> oppo
 		{
 			// Enemy raid, spawn guards for them
 			int numGuards = guards ? *guards : opponent->getGuardCount(state);
+			numGuards = std::round(numGuards * hostilesMultiplier);
 			numGuards = std::min(numGuards, MAX_UNITS_PER_SIDE);
 			for (int i = 0; i < numGuards; i++)
 			{
-				otherParticipants.emplace_back(
-				    opponent, listRandomiser(state.rng, opponent->guard_types_human));
+				otherParticipants.emplace_back(opponent,
+				                               pickRandom(state.rng, opponent->guard_types_human));
 			}
 		}
 
 		// Find which base is under attack
 		StateRef<Base> base = building->base;
 
-		// Add combat personel
+		// Add combat personnel
 		int playerAgentsCount = 0;
 		for (auto &agent : state.agents)
 		{
@@ -216,7 +220,7 @@ sp<Battle> BattleMap::createBattle(GameState &state, StateRef<Organisation> oppo
 				break;
 			}
 		}
-		// Add non-combat personel
+		// Add non-combat personnel
 		if (playerAgentsCount < MAX_UNITS_PER_SIDE)
 		{
 			for (auto &agent : state.agents)
@@ -255,14 +259,14 @@ sp<Battle> BattleMap::createBattle(GameState &state, StateRef<Organisation> oppo
 					aliens = &building->preset_crew;
 				}
 
-				// Civilains will not be actually added if there is no spawn points for them
+				// Civilians will not be actually added if there is no spawn points for them
 				int numCivs = civilians ? *civilians : state.getCivilian()->getGuardCount(state);
 				numCivs = std::min(numCivs, MAX_UNITS_PER_SIDE);
 				for (int i = 0; i < numCivs; i++)
 				{
 					otherParticipants.emplace_back(
 					    state.getCivilian(),
-					    listRandomiser(state.rng, state.getCivilian()->guard_types_alien));
+					    pickRandom(state.rng, state.getCivilian()->guard_types_alien));
 				}
 
 				missionType = Battle::MissionType::RaidAliens;
@@ -280,20 +284,20 @@ sp<Battle> BattleMap::createBattle(GameState &state, StateRef<Organisation> oppo
 				}
 
 				// Add building security if hostile to player
-				int numGuards =
-				    guards ? *guards : (building->owner->isRelatedTo(state.getPlayer()) ==
-				                                Organisation::Relation::Hostile
-				                            ? building->owner->getGuardCount(state)
-				                            : 0);
+				int numGuards = guards ? *guards
+				                       : (building->owner->isRelatedTo(state.getPlayer()) ==
+				                                  Organisation::Relation::Hostile
+				                              ? building->owner->getGuardCount(state)
+				                              : 0);
+				numGuards = std::round(numGuards * hostilesMultiplier);
 				numGuards = std::min(numGuards, MAX_UNITS_PER_SIDE);
 				for (int i = 0; i < numGuards; i++)
 				{
 					otherParticipants.emplace_back(
-					    building->owner,
-					    listRandomiser(state.rng, building->owner->guard_types_human));
+					    building->owner, pickRandom(state.rng, building->owner->guard_types_human));
 				}
 
-				// Civilains will not be actually added if there is no spawn points for them
+				// Civilians will not be actually added if there is no spawn points for them
 				// Or if building owner is not alien but hostile
 				int numCivs = civilians ? *civilians : state.getCivilian()->getGuardCount(state);
 				numCivs = std::min(numCivs, MAX_UNITS_PER_SIDE);
@@ -301,7 +305,7 @@ sp<Battle> BattleMap::createBattle(GameState &state, StateRef<Organisation> oppo
 				{
 					otherParticipants.emplace_back(
 					    state.getCivilian(),
-					    listRandomiser(state.rng, state.getCivilian()->guard_types_human));
+					    pickRandom(state.rng, state.getCivilian()->guard_types_human));
 				}
 
 				missionType = Battle::MissionType::AlienExtermination;
@@ -322,11 +326,12 @@ sp<Battle> BattleMap::createBattle(GameState &state, StateRef<Organisation> oppo
 			// Add building security always
 			{
 				int numGuards = guards ? *guards : building->owner->getGuardCount(state);
+				numGuards = std::round(numGuards * hostilesMultiplier);
 				numGuards = std::min(numGuards, MAX_UNITS_PER_SIDE);
 				for (int i = 0; i < numGuards; i++)
 				{
 					otherParticipants.emplace_back(
-					    opponent, listRandomiser(state.rng, building->owner->guard_types_human));
+					    opponent, pickRandom(state.rng, building->owner->guard_types_human));
 				}
 			}
 
@@ -344,7 +349,7 @@ sp<Battle> BattleMap::createBattle(GameState &state, StateRef<Organisation> oppo
 		auto alienOrg = state.getAliens();
 		for (auto &a : *aliens)
 		{
-			for (int i = 0; i < a.second; i++)
+			for (int i = 0; i < std::round(a.second * hostilesMultiplier); i++)
 			{
 				player_agents.push_back(
 				    state.agent_generator.createAgent(state, alienOrg, a.first));
@@ -372,7 +377,7 @@ sp<Battle> BattleMap::createBattle(GameState &state, StateRef<Organisation> oppo
 namespace
 {
 
-// Checks wether two cubes intersect
+// Checks whether two cubes intersect
 // s1 = size of sector 1, x1, y1, z1 = coordinate of sector 1
 // s2 = size of sector 2, x2, y2, z2 = coordinate of sector 2
 bool doTwoSectorsIntersect(int x1, int y1, int z1, Vec3<int> s1, int x2, int y2, int z2,
@@ -457,19 +462,16 @@ bool placeSector(GameState &state, std::vector<sp<BattleMapSector>> &sec_map,
 						// Try moving back on x
 						can_move = true;
 						for (int y2 = y1;
-						     y2 < y1 +
-						              sec_map[x1 + y1 * map_size.x + z1 * map_size.x * map_size.y]
-						                  ->size.y;
+						     y2 < y1 + sec_map[x1 + y1 * map_size.x + z1 * map_size.x * map_size.y]
+						                   ->size.y;
 						     y2++)
 							for (int z2 = z1;
 							     z2 <
-							     z1 +
-							         sec_map[x1 + y1 * map_size.x + z1 * map_size.x * map_size.y]
-							             ->size.z;
+							     z1 + sec_map[x1 + y1 * map_size.x + z1 * map_size.x * map_size.y]
+							              ->size.z;
 							     z2++)
-								can_move = can_move &&
-								           !doesCellIntersectSomething(sec_map, map_size, x1 - dx1,
-								                                       y2, z2);
+								can_move = can_move && !doesCellIntersectSomething(
+								                           sec_map, map_size, x1 - dx1, y2, z2);
 						if (can_move)
 						{
 							sec_map[x1 - dx1 + y1 * map_size.x + z1 * map_size.x * map_size.y] =
@@ -482,19 +484,16 @@ bool placeSector(GameState &state, std::vector<sp<BattleMapSector>> &sec_map,
 						// Try moving back on y
 						can_move = true;
 						for (int x2 = x1;
-						     x2 < x1 +
-						              sec_map[x1 + y1 * map_size.x + z1 * map_size.x * map_size.y]
-						                  ->size.x;
+						     x2 < x1 + sec_map[x1 + y1 * map_size.x + z1 * map_size.x * map_size.y]
+						                   ->size.x;
 						     x2++)
 							for (int z2 = z1;
 							     z2 <
-							     z1 +
-							         sec_map[x1 + y1 * map_size.x + z1 * map_size.x * map_size.y]
-							             ->size.z;
+							     z1 + sec_map[x1 + y1 * map_size.x + z1 * map_size.x * map_size.y]
+							              ->size.z;
 							     z2++)
-								can_move = can_move &&
-								           !doesCellIntersectSomething(sec_map, map_size, x2,
-								                                       y1 - dy1, z2);
+								can_move = can_move && !doesCellIntersectSomething(
+								                           sec_map, map_size, x2, y1 - dy1, z2);
 						if (can_move)
 						{
 							sec_map[x1 + (y1 - dy1) * map_size.x + z1 * map_size.x * map_size.y] =
@@ -507,19 +506,16 @@ bool placeSector(GameState &state, std::vector<sp<BattleMapSector>> &sec_map,
 						// Try moving back on z
 						can_move = true;
 						for (int x2 = x1;
-						     x2 < x1 +
-						              sec_map[x1 + y1 * map_size.x + z1 * map_size.x * map_size.y]
-						                  ->size.x;
+						     x2 < x1 + sec_map[x1 + y1 * map_size.x + z1 * map_size.x * map_size.y]
+						                   ->size.x;
 						     x2++)
 							for (int y2 = z1;
 							     y2 <
-							     y1 +
-							         sec_map[x1 + y1 * map_size.x + z1 * map_size.x * map_size.y]
-							             ->size.y;
+							     y1 + sec_map[x1 + y1 * map_size.x + z1 * map_size.x * map_size.y]
+							              ->size.y;
 							     y2++)
-								can_move = can_move &&
-								           !doesCellIntersectSomething(sec_map, map_size, x2, y2,
-								                                       z1 - dz1);
+								can_move = can_move && !doesCellIntersectSomething(
+								                           sec_map, map_size, x2, y2, z1 - dz1);
 						if (can_move)
 						{
 							sec_map[x1 + y1 * map_size.x + (z1 - dz1) * map_size.x * map_size.y] =
@@ -545,7 +541,7 @@ bool placeSector(GameState &state, std::vector<sp<BattleMapSector>> &sec_map,
 			{
 				for (int z1 = 0; z1 <= map_size.z - sector->size.z; z1++)
 				{
-					// We check wether sector placed here does not intersect with others
+					// We check whether sector placed here does not intersect with others
 					bool fits = true;
 					for (int x2 = 0; x2 < map_size.x; x2++)
 						for (int y2 = 0; y2 < map_size.y; y2++)
@@ -560,16 +556,16 @@ bool placeSector(GameState &state, std::vector<sp<BattleMapSector>> &sec_map,
 					if (!fits)
 						continue;
 
-					// If we're still here, then it definetly fits
+					// If we're still here, then it definitely fits
 					possible_locations.emplace_back(x1, y1, z1);
 				}
 			}
 		}
 
-		if (possible_locations.size() == 0)
+		if (possible_locations.empty())
 			continue;
 
-		auto location = vectorRandomizer(state.rng, possible_locations);
+		auto location = pickRandom(state.rng, possible_locations);
 		sec_map[location.x + location.y * map_size.x + location.z * map_size.x * map_size.y] =
 		    sector;
 
@@ -577,7 +573,7 @@ bool placeSector(GameState &state, std::vector<sp<BattleMapSector>> &sec_map,
 	}
 	return false;
 }
-} // anonymous-namespace
+} // namespace
 
 bool BattleMap::generateMap(std::vector<sp<BattleMapSector>> &sec_map, Vec3<int> &size,
                             GameState &state, GenerationSize genSize)
@@ -592,7 +588,8 @@ bool BattleMap::generateMap(std::vector<sp<BattleMapSector>> &sec_map, Vec3<int>
 	// mandatory sectors to fit into battle size even when enlarged by 1 on the smaller side
 	bool allow_very_large_maps = true;
 
-	// This switch allows maps to spawn only one of the mandatory sectos instead of every single one
+	// This switch allows maps to spawn only one of the mandatory sectors instead of
+	// every single one
 	// This provides for vertical stacking maps to be possible without huge sizes, but may
 	// theoretically produce maps with no way to the upper layers
 	// In practice, however, every vertical-stacking map's sector with more than one vertical chunk
@@ -604,7 +601,7 @@ bool BattleMap::generateMap(std::vector<sp<BattleMapSector>> &sec_map, Vec3<int>
 	// For example, 28SLUMS has max_y_size = 2, but often spawns a single block, because it's 9
 	// layers high, big enough to fit everything.
 	// OTOH, 14ACNORM has 2x2 max size, but often spawns 3x2 because it's only 2 layers high, and
-	// 2nd layer is just air (high ceiliing)
+	// 2nd layer is just air (high ceiling)
 	// As we do not know them yet, I will generate maps in 3 modes for now: small, normal, big
 	// Small being a -1 on the larger side and Big being +1 or +2 on a random side.
 	// +2 is required for some maps with vertical stacking to fit all the mandatory sectors
@@ -670,7 +667,7 @@ bool BattleMap::generateMap(std::vector<sp<BattleMapSector>> &sec_map, Vec3<int>
 	{
 		// However, some maps have "mandatory" vertical stacking
 		// That is, they only have sectors that are using more than one z chunk
-		// We must check wether or not this map has any sectors that are 1-high on z
+		// We must check whether or not this map has any sectors that are 1-high on z
 		bool foundUnstackedSector = false;
 		for (int i = 1; i <= secCount; i++)
 			foundUnstackedSector = foundUnstackedSector || (secRefs[i]->size.z == 1);
@@ -790,9 +787,8 @@ bool BattleMap::generateMap(std::vector<sp<BattleMapSector>> &sec_map, Vec3<int>
 			if (failed)
 				break;
 			for (int j = 0; j < secRefs[remaining_sectors[i]]->occurrence_min; j++)
-				failed = failed ||
-				         !placeSector(state, sec_map, size, secRefs[remaining_sectors[i]], true,
-				                      invert_x_packing, invert_y_packing);
+				failed = failed || !placeSector(state, sec_map, size, secRefs[remaining_sectors[i]],
+				                                true, invert_x_packing, invert_y_packing);
 			sec_num_placed[remaining_sectors[i]] = secRefs[remaining_sectors[i]]->occurrence_min;
 			if (sec_num_placed[remaining_sectors[i]] ==
 			    secRefs[remaining_sectors[i]]->occurrence_max)
@@ -813,7 +809,7 @@ bool BattleMap::generateMap(std::vector<sp<BattleMapSector>> &sec_map, Vec3<int>
 		if (random_generation)
 		{
 			// Random map generator
-			// Here we make two attemps to fill a map.
+			// Here we make two attempts to fill a map.
 			for (int attempt_fill_map = 1; attempt_fill_map <= 2; attempt_fill_map++)
 			{
 				if (isMapComplete(sec_map, size))
@@ -951,7 +947,7 @@ bool BattleMap::generateBase(std::vector<sp<BattleMapSector>> &sec_map, Vec3<int
 	{
 		for (i.y = 0; i.y < Base::SIZE; i.y++)
 		{
-			sec_map[i.x + i.y * size.x] = secRefs[getCorridorSectorID(base, i)];
+			sec_map[i.x + i.y * size.x] = secRefs[getCorridorSectorID(*base, i)];
 		}
 	}
 
@@ -1013,9 +1009,8 @@ BattleMap::fillMap(std::vector<std::list<std::pair<Vec3<int>, sp<BattleMapPart>>
 				{
 					LogInfo("Loading sector tiles \"%s\"", sec->sectorTilesName);
 					sec->tiles.reset(new BattleMapSectorTiles());
-					if (!sec->tiles->loadSector(state,
-					                            BattleMapSectorTiles::getMapSectorPath() + "/" +
-					                                sec->sectorTilesName))
+					if (!sec->tiles->loadSector(state, BattleMapSectorTiles::getMapSectorPath() +
+					                                       "/" + sec->sectorTilesName))
 					{
 						LogError("Failed to load sector tiles \"%s\"", sec->sectorTilesName);
 					}
@@ -1036,7 +1031,7 @@ BattleMap::fillMap(std::vector<std::list<std::pair<Vec3<int>, sp<BattleMapPart>>
 					s->position = initialPosition;
 					s->position += Vec3<float>(0.5f, 0.5f, 0.0f);
 
-					// Check wether this is an exit location, and if so,
+					// Check whether this is an exit location, and if so,
 					// replace the ground map part with an appropriate exit
 					bool canExit =
 					    s->position.z >= exit_level_min && s->position.z <= exit_level_max;
@@ -1144,9 +1139,9 @@ BattleMap::fillMap(std::vector<std::list<std::pair<Vec3<int>, sp<BattleMapPart>>
 				}
 				for (auto &pair : tiles.loot_locations)
 				{
-					if (target_organisation->loot[pair.second].size() == 0)
+					if (target_organisation->loot[pair.second].empty())
 						continue;
-					auto l = vectorRandomizer(state.rng, target_organisation->loot[pair.second]);
+					auto l = pickRandom(state.rng, target_organisation->loot[pair.second]);
 					if (!l)
 						continue;
 					auto i = mksp<AEquipment>();
@@ -1202,6 +1197,7 @@ BattleMap::fillMap(std::vector<std::list<std::pair<Vec3<int>, sp<BattleMapPart>>
 						b->spawnLocations[entry.first].push_back(pos + shift);
 						agents.emplace_back(
 						    state.agent_generator.createAgent(state, propertyOwner, entry.first));
+						agents.back()->destroyAfterBattle = true;
 					}
 				}
 				for (auto &entry : sec->spawnLocations)
@@ -1593,4 +1589,4 @@ void BattleMap::unloadTilesets(GameState &state)
 	state.battleMapTiles.clear();
 	LogInfo("Unloaded all tilesets.");
 }
-}
+} // namespace OpenApoc

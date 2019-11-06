@@ -21,7 +21,7 @@ class BattleDoor : public StateObject, public std::enable_shared_from_this<Battl
   public:
 	UString id;
 
-	// wether this door is still operational
+	// whether this door is still operational
 	bool operational = false;
 	bool right = false;
 	// "Open" flag for doors
@@ -46,4 +46,4 @@ class BattleDoor : public StateObject, public std::enable_shared_from_this<Battl
 	// Used to play sound at
 	Vec3<float> position;
 };
-}
+} // namespace OpenApoc

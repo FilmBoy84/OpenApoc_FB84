@@ -8,12 +8,12 @@ namespace OpenApoc
 /*
  * Implements some static methods to display the stat sheet for an agent equipment item/itemtype
  * To be used in agent equipment and transaction screens (maybe ufopaedia as well?)
-*/
+ */
 class AgentSheet
 {
   public:
 	AgentSheet(sp<Form> form);
-	void display(sp<Agent> item, std::vector<sp<Image>> &ranks, bool turnBased = true);
+	void display(const Agent &item, std::vector<sp<Image>> &ranks, bool turnBased = true);
 	void clear();
 
   private:

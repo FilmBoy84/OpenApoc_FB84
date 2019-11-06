@@ -7,9 +7,6 @@
 #include "framework/trace.h"
 #include "library/sp.h"
 
-// Disable automatic #pragma linking for boost - only enabled in msvc and that should provide boost
-// symbols as part of the module that uses it
-#define BOOST_ALL_NO_LIB
 #include <boost/locale.hpp>
 
 namespace OpenApoc
@@ -60,6 +57,7 @@ sp<BitmapFont> ApocalypseFont::loadFont(const UString &fontDescPath)
 
 	int spacewidth = 0;
 	int height = 0;
+	int kerning = 0;
 	UString fontName;
 
 	std::map<UniChar, UString> charMap;
@@ -81,6 +79,12 @@ sp<BitmapFont> ApocalypseFont::loadFont(const UString &fontDescPath)
 	if (spacewidth <= 0)
 	{
 		LogError("apocfont \"%s\" with invalid \"spacewidth\" attribute", fontName);
+		return nullptr;
+	}
+	kerning = fontNode.attribute("kerning").as_int();
+	if (kerning <= 0)
+	{
+		LogError("apocfont \"%s\" with invalid \"kerning\" attribute", fontName);
 		return nullptr;
 	}
 
@@ -123,7 +127,7 @@ sp<BitmapFont> ApocalypseFont::loadFont(const UString &fontDescPath)
 		charMap[c] = glyphPath;
 	}
 
-	auto font = BitmapFont::loadFont(charMap, spacewidth, height, fontName,
+	auto font = BitmapFont::loadFont(charMap, spacewidth, height, kerning, fontName,
 	                                 fw().data->loadPalette(fontNode.attribute("palette").value()));
 	return font;
 }

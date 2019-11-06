@@ -16,6 +16,23 @@ class UString
 	std::string u8Str;
 
   public:
+	class ConstIterator : public std::iterator<std::forward_iterator_tag, UniChar>
+	{
+	  private:
+		const UString &s;
+		size_t offset;
+		friend class UString;
+		ConstIterator(const UString &s, size_t initial_offset) : s(s), offset(initial_offset) {}
+
+	  public:
+		// Just enough to struggle through a range-based for
+		bool operator!=(const ConstIterator &other) const;
+		bool operator==(const ConstIterator &other) const;
+		ConstIterator operator++();
+		ConstIterator operator--();
+		UniChar operator*() const;
+	};
+
 	// ASSUMPTIONS:
 	// All std::string/char are utf8
 	// All lengths/offsets are in unicode code-points (not bytes/anything)
@@ -23,7 +40,9 @@ class UString
 	UString(std::string &&str);
 	UString(UniChar uc);
 	UString(const char *cstr);
+	UString(const char *cstr, size_t count);
 	UString(UString &&other);
+	UString(ConstIterator first, ConstIterator last);
 	UString();
 	~UString();
 
@@ -61,32 +80,25 @@ class UString
 
 	bool endsWith(const UString &suffix) const;
 
+	UString trimLeft() const;
+	UString trimRight() const;
+	UString trim() const;
+
 	bool operator==(const UString &other) const;
 	bool operator!=(const UString &other) const;
 	bool operator<(const UString &other) const;
 
-	class ConstIterator : public std::iterator<std::forward_iterator_tag, UniChar>
-	{
-	  private:
-		const UString &s;
-		size_t offset;
-		friend class UString;
-		ConstIterator(const UString &s, size_t initial_offset) : s(s), offset(initial_offset) {}
-
-	  public:
-		// Just enough to struggle through a range-based for
-		bool operator!=(const ConstIterator &other) const;
-		ConstIterator operator++();
-		UniChar operator*() const;
-	};
 	ConstIterator begin() const;
 	ConstIterator end() const;
 
 	static UniChar u8Char(char c);
+
+	friend std::istream &operator>>(std::istream &lhs, UString &rhs);
 };
 
 UString operator+(const UString &lhs, const UString &rhs);
 std::ostream &operator<<(std::ostream &lhs, const UString &rhs);
+std::istream &operator>>(std::istream &lhs, UString &rhs);
 
 class Strings
 {

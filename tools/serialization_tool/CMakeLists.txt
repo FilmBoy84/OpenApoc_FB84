@@ -2,7 +2,7 @@
 PROJECT(OpenApoc_SerializationTool CXX C)
 
 # check cmake version
-CMAKE_MINIMUM_REQUIRED(VERSION 3.1)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.9)
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package (Threads REQUIRED)
@@ -28,5 +28,3 @@ set( EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin )
 target_link_libraries(OpenApoc_SerializationTool OpenApoc_Library)
 target_link_libraries(OpenApoc_SerializationTool OpenApoc_Framework)
 target_link_libraries(OpenApoc_SerializationTool OpenApoc_GameState)
-
-set_property(TARGET OpenApoc_SerializationTool PROPERTY CXX_STANDARD 11)
