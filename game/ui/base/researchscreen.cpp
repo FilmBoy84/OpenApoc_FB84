@@ -41,18 +41,24 @@ ResearchScreen::ResearchScreen(sp<GameState> state, sp<Facility> selected_lab) :
 	uiListSmallLabs->scroller->setVisible(false);
 	uiListLargeLabs->scroller->setVisible(false);
 
-	uiListSmallLabs->addCallback(FormEventType::ListBoxChangeSelected, [this](FormsEvent *e) {
-		form->findControlTyped<ListBox>("LIST_LARGE_LABS")->setSelected(nullptr);
-		viewFacility =
-		    std::static_pointer_cast<ListBox>(e->forms().RaisedBy)->getSelectedData<Facility>();
-		setCurrentLabInfo();
-	});
-	uiListLargeLabs->addCallback(FormEventType::ListBoxChangeSelected, [this](FormsEvent *e) {
-		form->findControlTyped<ListBox>("LIST_SMALL_LABS")->setSelected(nullptr);
-		viewFacility =
-		    std::static_pointer_cast<ListBox>(e->forms().RaisedBy)->getSelectedData<Facility>();
-		setCurrentLabInfo();
-	});
+	uiListSmallLabs->addCallback(
+	    FormEventType::ListBoxChangeSelected,
+	    [this](FormsEvent *e)
+	    {
+		    form->findControlTyped<ListBox>("LIST_LARGE_LABS")->setSelected(nullptr);
+		    viewFacility =
+		        std::static_pointer_cast<ListBox>(e->forms().RaisedBy)->getSelectedData<Facility>();
+		    setCurrentLabInfo();
+	    });
+	uiListLargeLabs->addCallback(
+	    FormEventType::ListBoxChangeSelected,
+	    [this](FormsEvent *e)
+	    {
+		    form->findControlTyped<ListBox>("LIST_SMALL_LABS")->setSelected(nullptr);
+		    viewFacility =
+		        std::static_pointer_cast<ListBox>(e->forms().RaisedBy)->getSelectedData<Facility>();
+		    setCurrentLabInfo();
+	    });
 }
 
 ResearchScreen::~ResearchScreen() = default;
@@ -113,30 +119,34 @@ void ResearchScreen::begin()
 	}
 
 	auto unassignedAgentList = form->findControlTyped<ListBox>("LIST_UNASSIGNED");
-	unassignedAgentList->addCallback(FormEventType::ListBoxChangeSelected, [this](FormsEvent *e) {
-		LogWarning("unassigned agent selected");
-		if (this->assigned_agent_count >= this->viewFacility->type->capacityAmount)
-		{
-			LogWarning("no free space in lab");
-			return;
-		}
-		auto list = std::static_pointer_cast<ListBox>(e->forms().RaisedBy);
-		auto agent = list->getSelectedData<Agent>();
-		if (!agent)
-		{
-			LogError("No agent in selected data");
-			return;
-		}
-		if (agent->assigned_to_lab)
-		{
-			LogError("Agent \"%s\" already assigned to a lab?", agent->name);
-			return;
-		}
-		agent->assigned_to_lab = true;
-		this->viewFacility->lab->assigned_agents.push_back({state.get(), agent});
-		this->setCurrentLabInfo();
-	});
-	auto removeFn = [this](FormsEvent *e) {
+	unassignedAgentList->addCallback(
+	    FormEventType::ListBoxChangeSelected,
+	    [this](FormsEvent *e)
+	    {
+		    LogWarning("unassigned agent selected");
+		    if (this->assigned_agent_count >= this->viewFacility->type->capacityAmount)
+		    {
+			    LogWarning("no free space in lab");
+			    return;
+		    }
+		    auto list = std::static_pointer_cast<ListBox>(e->forms().RaisedBy);
+		    auto agent = list->getSelectedData<Agent>();
+		    if (!agent)
+		    {
+			    LogError("No agent in selected data");
+			    return;
+		    }
+		    if (agent->assigned_to_lab)
+		    {
+			    LogError("Agent \"%s\" already assigned to a lab?", agent->name);
+			    return;
+		    }
+		    agent->assigned_to_lab = true;
+		    this->viewFacility->lab->assigned_agents.push_back({state.get(), agent});
+		    this->setCurrentLabInfo();
+	    });
+	auto removeFn = [this](FormsEvent *e)
+	{
 		LogWarning("assigned agent selected");
 		auto list = std::static_pointer_cast<ListBox>(e->forms().RaisedBy);
 		auto agent = list->getSelectedData<Agent>();
@@ -156,11 +166,6 @@ void ResearchScreen::begin()
 	};
 	auto assignedAgentList = form->findControlTyped<ListBox>("LIST_ASSIGNED");
 	assignedAgentList->addCallback(FormEventType::ListBoxChangeSelected, removeFn);
-
-	// Set the listboxes to always emit events, otherwise the first entry is considered 'selected'
-	// to clicking on it won't get a callback
-	assignedAgentList->AlwaysEmitSelectionEvents = true;
-	unassignedAgentList->AlwaysEmitSelectionEvents = true;
 }
 
 void ResearchScreen::pause() {}
@@ -179,9 +184,10 @@ void ResearchScreen::eventOccurred(Event *e)
 
 	if (e->type() == EVENT_KEY_DOWN)
 	{
-		if (e->keyboard().KeyCode == SDLK_ESCAPE)
+		if (e->keyboard().KeyCode == SDLK_ESCAPE || e->keyboard().KeyCode == SDLK_RETURN ||
+		    e->keyboard().KeyCode == SDLK_KP_ENTER)
 		{
-			fw().stageQueueCommand({StageCmd::Command::POP});
+			form->findControl("BUTTON_OK")->click();
 			return;
 		}
 	}
@@ -369,6 +375,9 @@ void ResearchScreen::setCurrentLabInfo()
 	{
 		bool assigned_to_current_lab = false;
 		if (agent.second->homeBuilding->base != this->state->current_base)
+			continue;
+
+		if (agent.second->currentBuilding != agent.second->homeBuilding)
 			continue;
 
 		if (agent.second->type->role != listedAgentType)

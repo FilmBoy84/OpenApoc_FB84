@@ -3,6 +3,7 @@
 #include "forms/graphic.h"
 #include "forms/label.h"
 #include "forms/ui.h"
+#include "framework/configfile.h"
 #include "framework/event.h"
 #include "framework/framework.h"
 #include "framework/keycodes.h"
@@ -10,6 +11,7 @@
 #include "game/state/city/building.h"
 #include "game/state/city/vehicle.h"
 #include "game/state/city/vehiclemission.h"
+#include "game/state/gameevent.h"
 #include "game/state/gamestate.h"
 #include "game/state/shared/organisation.h"
 #include "game/ui/base/vequipscreen.h"
@@ -57,9 +59,10 @@ void AlertScreen::eventOccurred(Event *e)
 
 	if (e->type() == EVENT_KEY_DOWN)
 	{
-		if (e->keyboard().KeyCode == SDLK_ESCAPE)
+		if (e->keyboard().KeyCode == SDLK_ESCAPE || e->keyboard().KeyCode == SDLK_RETURN ||
+		    e->keyboard().KeyCode == SDLK_KP_ENTER)
 		{
-			fw().stageQueueCommand({StageCmd::Command::POP});
+			menuform->findControl("BUTTON_QUIT")->click();
 			return;
 		}
 	}
@@ -86,19 +89,30 @@ void AlertScreen::eventOccurred(Event *e)
 			// send a vehicle fleet
 			for (auto &vehicle : agentAssignment->getSelectedVehicles())
 			{
+
+				vehicle->wasAlreadyAtTgtBuilding = false;
+
+				// check if vehicle already at tgt building
+				if (Building::getId(*state, vehicle->currentBuilding)
+				        .compare(Building::getId(*state, this->building)) == 0)
+				{
+					vehicle->wasAlreadyAtTgtBuilding = true;
+				}
 				++building->pendingInvestigatorCount;
 				vehicle->setMission(*state, VehicleMission::investigateBuilding(
 				                                *state, *vehicle, {state.get(), building}));
 			}
 
 			// send agents on foot
+			bool useTaxi = config().getBool("OpenApoc.NewFeature.AllowSoldierTaxiUse");
 			for (auto &agent : agentAssignment->getSelectedAgents())
 			{
 				if (!agent->currentVehicle)
 				{
 					++building->pendingInvestigatorCount;
-					agent->setMission(*state, AgentMission::investigateBuilding(
-					                              *state, *agent, {state.get(), building}));
+					agent->setMission(*state,
+					                  AgentMission::investigateBuilding(
+					                      *state, *agent, {state.get(), building}, false, useTaxi));
 				}
 			}
 
@@ -129,6 +143,23 @@ void AlertScreen::eventOccurred(Event *e)
 		{
 			fw().stageQueueCommand({StageCmd::Command::POP});
 			return;
+		}
+	}
+
+	if (e->type() == EVENT_GAME_STATE)
+	{
+		auto gameEvent = dynamic_cast<GameEvent *>(e);
+		switch (gameEvent->type)
+		{
+			// Let the user know the Investigation can not be commenced without a Vehicle
+			case GameEventType::AgentUnableToReach:
+				fw().stageQueueCommand(
+				    {StageCmd::Command::PUSH,
+				     mksp<MessageBox>(tr("Unable to Reach"),
+				                      tr("The Agent is unable to reach the Target Building by "
+				                         "Foot. Canceling Mission!"),
+				                      MessageBox::ButtonOptions::Ok)});
+				break;
 		}
 	}
 }

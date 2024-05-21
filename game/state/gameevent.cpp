@@ -33,6 +33,7 @@ const std::map<GameEventType, UString> GameEvent::optionsMap = {
     {GameEventType::NotEnoughFuel, "Notifications.City.NotEnoughFuel"},
     {GameEventType::CommenceInvestigation, "Notifications.City.CommenceInvestigation"},
     {GameEventType::UnauthorizedVehicle, "Notifications.City.UnauthorizedVehicle"},
+    {GameEventType::BaseDestroyed, "Notifications.City.BaseDestroyed"},
 
     {GameEventType::HostileSpotted, "Notifications.Battle.HostileSpotted"},
     {GameEventType::HostileDied, "Notifications.Battle.HostileDied"},
@@ -193,6 +194,8 @@ UString GameAgentEvent::message()
 			return format("%s", tr("No line of fire"));
 		case GameEventType::AgentPsiProbed:
 			return "";
+		case GameEventType::AgentOutOfAmmo:
+			return format("%s %s", agent->name, tr(": Out of ammo"));
 		default:
 			LogError("Invalid agent event type");
 			break;
@@ -211,6 +214,17 @@ UString GameBuildingEvent::message()
 		case GameEventType::BuildingAttacked:
 			return format("%s %s %s %s", tr("Building under attack :"), building->name,
 			              tr("Attacked by:"), actor->name);
+		case GameEventType::OrganisationAttackBuilding:
+			return format("%s %s %s %s", tr("Organization attacked:"), building->owner->name,
+			              tr("Attacked by:"), actor->name);
+		case GameEventType::OrganisationRaidBuilding:
+			return format("%s %s %s %s", tr("Organization raided:"), building->owner->name,
+			              tr("Raided by:"), actor->name);
+		case GameEventType::OrganisationStormBuilding:
+			return format("%s %s %s %s", tr("Organization stormed:"), building->owner->name,
+			              tr("Stormed by:"), actor->name);
+		case GameEventType::OrganisationTreatySigned:
+			return format("%s %s, %s", tr("Treaty signed:"), building->owner->name, actor->name);
 		case GameEventType::AlienSpotted:
 			return tr("Live Alien spotted.");
 		case GameEventType::CargoExpiresSoon:
@@ -368,18 +382,17 @@ GameSomethingDiedEvent::GameSomethingDiedEvent(GameEventType type, UString name,
 		case GameEventType::BaseDestroyed:
 			if (actor.length() > 0)
 			{
-				messageInner = tr("X-COM base destroyed by hostile forces.");
+				messageInner = format(tr("X-COM %s destroyed by hostile forces"), name);
 			}
 			else
 			{
-				messageInner = tr("X-COM Base destroyed due to collapsing building.");
+				messageInner = format(tr("X-COM %s destroyed due to collapsing building."), name);
 			}
 			break;
 		case GameEventType::VehicleDestroyed:
 			if (actor.length() > 0)
 			{
-				messageInner = format("%s %s %s: %s", tr("Vehicle destroyed:"), name,
-				                      tr("destroyed by"), actor);
+				messageInner = format("%s %s: %s", name, tr("destroyed by"), actor);
 			}
 			else
 			{
@@ -392,6 +405,13 @@ GameSomethingDiedEvent::GameSomethingDiedEvent(GameEventType type, UString name,
 			break;
 		case GameEventType::VehicleNoFuel:
 			messageInner = format("%s %s", tr("Vehicle out of fuel:"), name);
+			break;
+		case GameEventType::VehicleModuleScrapped:
+			messageInner = format("%s %s", tr("Module lost during recovery:"), name);
+			break;
+		default:
+			LogWarning("GameSomethingDiedEvent %s called on non-death event %d", name,
+			           static_cast<int>(type));
 			break;
 	}
 }

@@ -55,12 +55,22 @@ void GraphicButton::eventOccured(Event *e)
 
 		if (ScrollBarPrev != nullptr)
 		{
-			ScrollBarPrev->scrollPrev(!scrollLarge);
+			ScrollBarPrev->scrollPrev();
 		}
 
 		if (ScrollBarNext != nullptr)
 		{
-			ScrollBarNext->scrollNext(!scrollLarge);
+			ScrollBarNext->scrollNext();
+		}
+
+		if (ScrollBarPrevHorizontal != nullptr)
+		{
+			ScrollBarPrevHorizontal->scrollPrev(1);
+		}
+
+		if (ScrollBarNextHorizontal != nullptr)
+		{
+			ScrollBarNextHorizontal->scrollNext(1);
 		}
 	}
 }
@@ -167,7 +177,16 @@ sp<Control> GraphicButton::copyTo(sp<Control> CopyParent)
 		copy->ScrollBarNext =
 		    std::dynamic_pointer_cast<ScrollBar>(ScrollBarNext->lastCopiedTo.lock());
 	}
-	copy->scrollLarge = scrollLarge;
+	if (this->ScrollBarPrevHorizontal)
+	{
+		copy->ScrollBarPrevHorizontal =
+		    std::dynamic_pointer_cast<ScrollBar>(ScrollBarPrevHorizontal->lastCopiedTo.lock());
+	}
+	if (this->ScrollBarNextHorizontal)
+	{
+		copy->ScrollBarNextHorizontal =
+		    std::dynamic_pointer_cast<ScrollBar>(ScrollBarNextHorizontal->lastCopiedTo.lock());
+	}
 	copyControlData(copy);
 	return copy;
 }
@@ -176,10 +195,6 @@ void GraphicButton::configureSelfFromXml(pugi::xml_node *node)
 {
 	Control::configureSelfFromXml(node);
 
-	if (auto scrollLarge = node->attribute("scrolllarge"))
-	{
-		this->scrollLarge = scrollLarge.as_bool();
-	}
 	auto imageNode = node->child("image");
 	if (imageNode)
 	{

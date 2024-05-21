@@ -14,11 +14,13 @@ class ModInfo
 	UString description;
 	UString link;
 	UString ID;
-	std::list<UString> _requires;
+	std::list<UString> _requirements;
 	std::list<UString> _conflicts;
 	UString dataPath;
 	UString statePath;
 	UString minVersion;
+	UString modLoadScript;
+	std::list<UString> supported_languages;
 
   public:
 	// The user-visible name of the mod
@@ -45,8 +47,8 @@ class ModInfo
 	const UString &getID() const { return ID; }
 	void setID(const UString &newID) { ID = newID; }
 	// A list of IDs this mod depends on
-	const std::list<UString> &requires() const { return _requires; }
-	std::list<UString> requires() { return _requires; }
+	const std::list<UString> &requirements() const { return _requirements; }
+	std::list<UString> requirements() { return _requirements; }
 	// A list of IDs this mod is known to not work with
 	const std::list<UString> &conflicts() const { return _conflicts; }
 	std::list<UString> conflicts() { return _conflicts; }
@@ -67,5 +69,14 @@ class ModInfo
 
 	static std::optional<ModInfo> getInfo(const UString &path);
 	bool writeInfo(const UString &path);
+
+	const UString &getModLoadScript() const { return modLoadScript; }
+	void setModLoadScript(const UString &newScript) { modLoadScript = newScript; }
+
+	const std::list<UString> getSupportedLanguages() const { return supported_languages; }
+	void setSupportedLanguage(const std::list<UString> &newLanguages)
+	{
+		supported_languages = newLanguages;
+	}
 };
 } // namespace OpenApoc

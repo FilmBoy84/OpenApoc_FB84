@@ -20,6 +20,7 @@
 #include "game/state/shared/agent.h"
 #include "game/state/shared/organisation.h"
 #include <algorithm>
+#include <array>
 #include <unordered_map>
 
 namespace OpenApoc
@@ -49,12 +50,7 @@ int getCorridorSectorID(const Base &base, Vec2<int> pos)
 	{
 		// We need to cap any facilities
 		// For that we need to find where facilities are
-		std::vector<std::vector<bool>> facilities;
-		facilities.resize(Base::SIZE);
-		for (int i = 0; i < Base::SIZE; i++)
-		{
-			facilities[i].resize(Base::SIZE);
-		}
+		std::array<std::array<bool, Base::SIZE>, Base::SIZE> facilities;
 		for (auto &facility : base.facilities)
 		{
 			if (facility->buildTime > 0)
@@ -65,6 +61,11 @@ int getCorridorSectorID(const Base &base, Vec2<int> pos)
 			{
 				for (int y = 0; y < facility->type->size; y++)
 				{
+					if (facility->pos.x + x >= Base::SIZE || facility->pos.y + y >= Base::SIZE)
+					{
+						LogError("Facility at \"%s\" out of bounds", facility->pos);
+						continue;
+					}
 					facilities[facility->pos.x + x][facility->pos.y + y] = true;
 				}
 			}
@@ -88,7 +89,7 @@ int getCorridorSectorID(const Base &base, Vec2<int> pos)
 }
 } // namespace
 
-sp<BattleMap> BattleMap::get(const GameState &state, const UString &id)
+template <> sp<BattleMap> StateObject<BattleMap>::get(const GameState &state, const UString &id)
 {
 	auto it = state.battle_maps.find(id);
 	if (it == state.battle_maps.end())
@@ -98,18 +99,18 @@ sp<BattleMap> BattleMap::get(const GameState &state, const UString &id)
 	}
 	return it->second;
 }
-
-const UString &BattleMap::getPrefix()
+template <> const UString &StateObject<BattleMap>::getPrefix()
 {
 	static UString prefix = "BATTLEMAP_";
 	return prefix;
 }
-const UString &BattleMap::getTypeName()
+template <> const UString &StateObject<BattleMap>::getTypeName()
 {
 	static UString name = "BattleMap";
 	return name;
 }
-const UString &BattleMap::getId(const GameState &state, const sp<BattleMap> ptr)
+template <>
+const UString &StateObject<BattleMap>::getId(const GameState &state, const sp<BattleMap> ptr)
 {
 	static const UString emptyString = "";
 	for (auto &a : state.battle_maps)
@@ -117,7 +118,7 @@ const UString &BattleMap::getId(const GameState &state, const sp<BattleMap> ptr)
 		if (a.second == ptr)
 			return a.first;
 	}
-	LogError("No battle_map matching pointer %p", ptr.get());
+	LogError("No battle_map matching pointer %p", static_cast<void *>(ptr.get()));
 	return emptyString;
 }
 
@@ -204,9 +205,21 @@ sp<Battle> BattleMap::createBattle(GameState &state, StateRef<Organisation> oppo
 
 		// Add combat personnel
 		int playerAgentsCount = 0;
+
+		for (auto &v : base->building->currentVehicles)
+		{
+			for (auto &agent : v->currentAgents)
+			{
+				player_agents.emplace_back(&state, agent);
+				if (++playerAgentsCount >= MAX_UNITS_PER_SIDE)
+				{
+					break;
+				}
+			}
+		}
 		for (auto &agent : state.agents)
 		{
-			if (agent.second->homeBuilding->base != base)
+			if (agent.second->currentBuilding != base->building)
 			{
 				continue;
 			}
@@ -1290,7 +1303,7 @@ void BattleMap::fillSquads(sp<Battle> b, bool spawnCivilians, GameState &state,
 		if (!spawnCivilians && a->owner == state.getCivilian())
 		{
 			// Delete agent
-			state.agents.erase(a.id);
+			state.agentsDeathNote.insert(a.id);
 			a->destroy();
 			continue;
 		}
@@ -1391,6 +1404,7 @@ void BattleMap::fillSquads(sp<Battle> b, bool spawnCivilians, GameState &state,
 			}
 		}
 	}
+	state.cleanUpDeathNote();
 }
 
 void BattleMap::initNewMap(sp<Battle> b)

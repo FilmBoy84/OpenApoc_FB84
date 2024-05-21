@@ -9,6 +9,7 @@
 #include "game/state/city/vehiclemission.h"
 #include "game/state/gameevent.h"
 #include "game/state/gamestate.h"
+#include "game/state/rules/city/scenerytiletype.h"
 #include "game/state/shared/organisation.h"
 
 // Uncomment to make cargo system output warnings
@@ -17,7 +18,8 @@
 namespace OpenApoc
 {
 
-sp<BuildingFunction> BuildingFunction::get(const GameState &state, const UString &id)
+template <>
+sp<BuildingFunction> StateObject<BuildingFunction>::get(const GameState &state, const UString &id)
 {
 	auto it = state.building_functions.find(id);
 	if (it == state.building_functions.end())
@@ -28,18 +30,18 @@ sp<BuildingFunction> BuildingFunction::get(const GameState &state, const UString
 	return it->second;
 }
 
-const UString &BuildingFunction::getPrefix()
+template <> const UString &StateObject<BuildingFunction>::getPrefix()
 {
-	static UString prefix = "BUILDINGFUNCTION_";
+	static const UString prefix = "BUILDINGFUNCTION_";
 	return prefix;
 }
-const UString &BuildingFunction::getTypeName()
+template <> const UString &StateObject<BuildingFunction>::getTypeName()
 {
-	static UString name = "AgentType";
+	static const UString name = "BuildingFunction";
 	return name;
 }
 
-sp<Building> Building::get(const GameState &state, const UString &id)
+template <> sp<Building> StateObject<Building>::get(const GameState &state, const UString &id)
 {
 	for (auto &city : state.cities)
 	{
@@ -52,18 +54,19 @@ sp<Building> Building::get(const GameState &state, const UString &id)
 	return nullptr;
 }
 
-const UString &Building::getPrefix()
+template <> const UString &StateObject<Building>::getPrefix()
 {
 	static UString prefix = "BUILDING_";
 	return prefix;
 }
-const UString &Building::getTypeName()
+template <> const UString &StateObject<Building>::getTypeName()
 {
 	static UString name = "Building";
 	return name;
 }
 
-const UString &Building::getId(const GameState &state, const sp<Building> ptr)
+template <>
+const UString &StateObject<Building>::getId(const GameState &state, const sp<Building> ptr)
 {
 	static const UString emptyString = "";
 	for (auto &c : state.cities)
@@ -74,7 +77,7 @@ const UString &Building::getId(const GameState &state, const sp<Building> ptr)
 				return b.first;
 		}
 	}
-	LogError("No building matching pointer %p", ptr.get());
+	LogError("No building matching pointer %p", static_cast<void *>(ptr.get()));
 	return emptyString;
 }
 
@@ -92,6 +95,48 @@ bool Building::hasAliens() const
 		}
 	}
 	return false;
+}
+
+void Building::initBuilding(GameState &state)
+{
+	// Initialize economy data, done in the map/city editor or when game starts for the first time
+	// Not on save/load, that's why values are serialized
+	currentWage = city->civilianSalary;
+	maximumWorkforce = countActiveTiles() * function->workersPerTile / 2;
+	currentWorkforce = maximumWorkforce * 70 / 100;
+	maintenanceCosts = randBoundsInclusive(state.rng, 90, 110) * function->baseCost / 100;
+	incomePerCapita = randBoundsInclusive(state.rng, 90, 110) * function->baseIncome / 100;
+	investment = function->investmentValue;
+	prestige = function->prestige;
+}
+
+void Building::updateWorkforce()
+{
+	maximumWorkforce = countActiveTiles() * function->workersPerTile / 2;
+	if (maximumWorkforce < currentWorkforce)
+	{
+		city->populationUnemployed -= currentWorkforce - maximumWorkforce;
+		currentWorkforce = maximumWorkforce;
+	}
+}
+
+int Building::calculateIncome() const
+{
+	return currentWorkforce * (incomePerCapita - currentWage) - maintenanceCosts;
+}
+
+unsigned Building::countActiveTiles() const
+{
+	unsigned relevantTiles = 0;
+	for (const auto &p : buildingParts)
+	{
+		const auto tile = city->map->getTile(p);
+		if (tile && tile->presentScenery && tile->presentScenery->type->isBuildingPart)
+		{
+			relevantTiles++;
+		}
+	}
+	return relevantTiles;
 }
 
 void Building::updateDetection(GameState &state, unsigned int ticks)
@@ -177,7 +222,7 @@ void Building::updateCargo(GameState &state)
 				for (auto &a : currentAgents)
 				{
 					if (a->missions.empty() ||
-					    a->missions.front()->type != AgentMission::MissionType::AwaitPickup)
+					    a->missions.front().type != AgentMission::MissionType::AwaitPickup)
 					{
 						continue;
 					}
@@ -251,7 +296,7 @@ void Building::updateCargo(GameState &state)
 			for (auto &a : currentAgents)
 			{
 				if (a->missions.empty() ||
-				    a->missions.front()->type != AgentMission::MissionType::AwaitPickup)
+				    a->missions.front().type != AgentMission::MissionType::AwaitPickup)
 				{
 					continue;
 				}
@@ -320,7 +365,7 @@ void Building::updateCargo(GameState &state)
 	{
 		if (c.count == 0)
 		{
-			LogError("Should not be possible to have zero cargo at this point?");
+			// Cargo expired
 			continue;
 		}
 		auto sourceOrg = (!c.originalOwner || c.destination->owner == c.originalOwner)
@@ -351,16 +396,16 @@ void Building::updateCargo(GameState &state)
 	for (auto &a : currentAgents)
 	{
 		if (a->missions.empty() ||
-		    a->missions.front()->type != AgentMission::MissionType::AwaitPickup)
+		    a->missions.front().type != AgentMission::MissionType::AwaitPickup)
 		{
 			continue;
 		}
 #ifdef DEBUG_VERBOSE_CARGO_SYSTEM
 		LogWarning("AGENT: %s needs to deliver to %s", thisRef.id,
-		           a->missions.front()->targetBuilding.id);
+		           a->missions.front().targetBuilding.id);
 #endif
-		spaceNeeded[a->missions.front()->targetBuilding][a->owner].resize(3);
-		spaceNeeded[a->missions.front()->targetBuilding][a->owner][2]++;
+		spaceNeeded[a->missions.front().targetBuilding][a->owner].resize(3);
+		spaceNeeded[a->missions.front().targetBuilding][a->owner][2]++;
 	}
 
 	// Step 04: Find if carrying capacity is satisfied by incoming ferries
@@ -375,8 +420,8 @@ void Building::updateCargo(GameState &state)
 			}
 			// Check if is a ferry
 			if (v.second->missions.empty() ||
-			    v.second->missions.back()->type != VehicleMission::MissionType::OfferService ||
-			    v.second->missions.back()->missionCounter > 0)
+			    v.second->missions.back().type != VehicleMission::MissionType::OfferService ||
+			    v.second->missions.back().missionCounter > 0)
 			{
 				continue;
 			}
@@ -389,7 +434,7 @@ void Building::updateCargo(GameState &state)
 					continue;
 				}
 				// Not bound for this building
-				if (v.second->missions.back()->targetBuilding != thisRef)
+				if (v.second->missions.back().targetBuilding != thisRef)
 				{
 					continue;
 				}
@@ -772,7 +817,15 @@ void Building::detect(GameState &state, bool forced)
 	ticksDetectionTimeOut = TICKS_DETECTION_TIMEOUT;
 	if (base)
 	{
-		fw().pushEvent(new GameDefenseEvent(GameEventType::DefendTheBase, base, state.getAliens()));
+		if (!base->building->occupied())
+		{
+			base->die(state, false);
+		}
+		else
+		{
+			fw().pushEvent(
+			    new GameDefenseEvent(GameEventType::DefendTheBase, base, state.getAliens()));
+		}
 	}
 	else
 	{
@@ -914,8 +967,16 @@ void Building::alienMovement(GameState &state)
 	}
 	if (bld->base)
 	{
-		fw().pushEvent(
-		    new GameDefenseEvent(GameEventType::DefendTheBase, bld->base, state.getAliens()));
+		// Destroy base if its empty
+		if (!bld->occupied())
+		{
+			bld->base->die(state, false);
+		}
+		else
+		{
+			fw().pushEvent(
+			    new GameDefenseEvent(GameEventType::DefendTheBase, bld->base, state.getAliens()));
+		}
 	}
 }
 
@@ -924,11 +985,14 @@ void Building::underAttack(GameState &state, StateRef<Organisation> attacker)
 	if (owner->isRelatedTo(attacker) == Organisation::Relation::Hostile)
 	{
 		std::list<StateRef<Vehicle>> toLaunch;
-		for (auto v : currentVehicles)
+		for (auto &v : currentVehicles)
 		{
-			toLaunch.push_back(v);
+			if (v->canDefend())
+			{
+				toLaunch.push_back(v);
+			}
 		}
-		for (auto v : toLaunch)
+		for (auto &v : toLaunch)
 		{
 			v->setMission(state, VehicleMission::patrol(state, *v, true, 5));
 		}
@@ -968,21 +1032,15 @@ void Building::buildingPartChange(GameState &state, Vec3<int> part, bool intact)
 	}
 	else
 	{
-		// Skin36 had some code figured out about this
-		// which counted score of parts and when it was below certain value
-		// building was considered dead
 		buildingParts.erase(part);
 		if (buildingParts.find(crewQuarters) == buildingParts.end())
 		{
-			while (!currentAgents.empty())
+			for (auto agent : currentAgents)
 			{
-				// For some reason need to assign first before calling die()
-				auto agent = *currentAgents.begin();
-				// Dying will remove agent from current agents list
 				agent->die(state, true);
 			}
 		}
-		if (!isAlive(state))
+		if (!isAlive())
 		{
 			if (base)
 			{
@@ -1007,6 +1065,41 @@ void Building::decreasePendingInvestigatorCount(GameState &state)
 	}
 }
 
-bool Building::isAlive(GameState &state [[maybe_unused]]) const { return !buildingParts.empty(); }
+int Building::getAverageConstitution() const
+{
+	int totalConst = 0;
+	unsigned relevantTiles = 0;
+	for (const auto &p : buildingParts)
+	{
+		const auto tile = city->map->getTile(p);
+		if (tile && tile->presentScenery && tile->presentScenery->type->isBuildingPart)
+		{
+			totalConst += tile->presentScenery->type->constitution;
+			relevantTiles++;
+		}
+	}
+	return (relevantTiles > 0) ? totalConst / relevantTiles : 0;
+}
+
+bool Building::occupied() const
+{
+	if (!this->currentAgents.empty())
+	{
+		return true;
+	}
+	if (!this->currentVehicles.empty())
+	{
+		for (auto &v : this->currentVehicles)
+		{
+			if (!v->currentAgents.empty())
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+bool Building::isAlive() const { return countActiveTiles() > 0; }
 
 } // namespace OpenApoc

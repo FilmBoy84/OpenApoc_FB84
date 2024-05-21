@@ -44,9 +44,8 @@ class ProjectDependencies
 	bool satisfied(StateRef<Base> base) const;
 };
 
-class ResearchTopic : public StateObject
+class ResearchTopic : public StateObject<ResearchTopic>
 {
-	STATE_OBJECT(ResearchTopic)
   public:
 	ResearchTopic() = default;
 	enum class Type
@@ -111,9 +110,8 @@ class ResearchDependency
 	bool satisfied() const;
 };
 
-class Lab : public StateObject
+class Lab : public StateObject<Lab>
 {
-	STATE_OBJECT(Lab)
   public:
 	Lab() = default;
 	~Lab() override;
@@ -160,16 +158,6 @@ class ResearchState
 	void updateTopicList();
 	void resortTopicList();
 	StateRefMap<Lab> labs;
-
-	// Is the research of the item finished?
-	template <class T> bool isComplete(StateRef<T> item) const
-	{
-		size_t prefLen = item->getPrefix().length();
-		UString researchId(ResearchTopic::getPrefix() + item->id.substr(prefLen));
-
-		auto it = topics.find(researchId);
-		return it == topics.end() ? true : it->second->isComplete();
-	}
 };
 
 } // namespace OpenApoc

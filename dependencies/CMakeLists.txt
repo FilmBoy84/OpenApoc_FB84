@@ -92,12 +92,12 @@ endif()
 set (LIBLODEPNG_SOURCE_FILES
 		lodepng/lodepng.cpp)
 
-source_group(libpugixml\\sources FILES ${LIBLODEPNG_SOURCE_FILES})
+source_group(lodepng\\sources FILES ${LIBLODEPNG_SOURCE_FILES})
 
 set (LIBLODEPNG_HEADER_FILES
 		lodepng/lodepng.h)
 
-source_group(libpugixml\\headers FILES ${LIBLODEPNG_HEADER_FILES})
+source_group(lodepng\\headers FILES ${LIBLODEPNG_HEADER_FILES})
 
 list(APPEND ALL_SOURCE_FILES ${LIBLODEPNG_SOURCE_FILES})
 list(APPEND ALL_HEADER_FILES ${LIBLODEPNG_HEADER_FILES})
@@ -109,26 +109,31 @@ if(NOT WIN32)
 	target_compile_definitions(OpenApoc_LibLodepng PUBLIC PTHREADS_AVAILABLE)
 endif()
 
-# Only enable the subset of physfs we actually use
+set(USE_SYSTEM_PHYSFS OFF CACHE BOOL "Use preinstalled physfs")
 
-set(PHYSFS_ARCHIVE_7Z OFF CACHE BOOL "")
-set(PHYSFS_ARCHIVE_GRP OFF CACHE BOOL "")
-set(PHYSFS_ARCHIVE_HOG OFF CACHE BOOL "")
-set(PHYSFS_ARCHIVE_MVL OFF CACHE BOOL "")
-set(PHYSFS_ARCHIVE_QPAK OFF CACHE BOOL "")
-set(PHYSFS_ARCHIVE_SLB OFF CACHE BOOL "")
-set(PHYSFS_ARCHIVE_WAD OFF CACHE BOOL "")
-set(PHYSFS_ARCHIVE_ISO9660 ON CACHE BOOL "")
-set(PHYSFS_ARCHIVE_ISO9660_LOWERCASE ON CACHE BOOL "")
-set(PHYSFS_ARCHIVE_ISO9660_OPENAPOC_WORKAROUND ON CACHE BOOL "")
-set(PHYSFS_ARCHIVE_ZIP ON CACHE BOOL "")
+find_package(PhysFS)
+if(NOT USE_SYSTEM_PHYSFS)
+	# Only enable the subset of physfs we actually use
 
-set(PHYSFS_BUILD_SHARED OFF CACHE BOOL "")
-set(PHYSFS_BUILD_STATIC ON CACHE BOOL "")
+	set(PHYSFS_ARCHIVE_7Z OFF CACHE BOOL "")
+	set(PHYSFS_ARCHIVE_GRP OFF CACHE BOOL "")
+	set(PHYSFS_ARCHIVE_HOG OFF CACHE BOOL "")
+	set(PHYSFS_ARCHIVE_MVL OFF CACHE BOOL "")
+	set(PHYSFS_ARCHIVE_QPAK OFF CACHE BOOL "")
+	set(PHYSFS_ARCHIVE_SLB OFF CACHE BOOL "")
+	set(PHYSFS_ARCHIVE_WAD OFF CACHE BOOL "")
+	set(PHYSFS_ARCHIVE_ISO9660 ON CACHE BOOL "")
+	set(PHYSFS_ARCHIVE_ISO9660_LOWERCASE ON CACHE BOOL "")
+	set(PHYSFS_ARCHIVE_ISO9660_OPENAPOC_WORKAROUND ON CACHE BOOL "")
+	set(PHYSFS_ARCHIVE_ZIP ON CACHE BOOL "")
 
-set(PHYSFS_BUILD_TEST OFF CACHE BOOL "")
+	set(PHYSFS_BUILD_SHARED OFF CACHE BOOL "")
+	set(PHYSFS_BUILD_STATIC ON CACHE BOOL "")
 
-add_subdirectory(physfs)
+	set(PHYSFS_BUILD_TEST OFF CACHE BOOL "")
+
+	add_subdirectory(physfs)
+endif()
 
 file (GLOB_RECURSE LUA_SOURCE_FILES lua/*.c)
 file (GLOB_RECURSE LUA_HEADER_FILES lua/*.h)
@@ -146,3 +151,5 @@ target_compile_options(OpenApoc_LibPugixml PRIVATE "-w")
 target_compile_options(OpenApoc_LibLodepng PRIVATE "-w")
 target_compile_options(OpenApoc_Miniz PRIVATE "-w")
 target_compile_options(OpenApoc_Lua PRIVATE "-w")
+
+add_subdirectory(fmt)

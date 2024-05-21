@@ -11,17 +11,17 @@
 #include "framework/options.h"
 #include "framework/renderer.h"
 #include "framework/sound.h"
-#include "framework/trace.h"
 #include "library/sp.h"
+#include <iterator>
 
 namespace OpenApoc
 {
 
 Control::Control(bool takesFocus)
     : funcPreRender(nullptr), mouseInside(false), mouseDepressed(false), resolvedLocation(0, 0),
-      Visible(true), isClickable(false), Name("Control"), Location(0, 0), Size(0, 0),
-      SelectionSize(0, 0), BackgroundColour(0, 0, 0, 0), takesFocus(takesFocus), showBounds(false),
-      Enabled(true), canCopy(true),
+      Visible(true), isClickable(false), Removed(false), Name("Control"), Location(0, 0),
+      Size(0, 0), SelectionSize(0, 0), BackgroundColour(0, 0, 0, 0), takesFocus(takesFocus),
+      showBounds(false), Enabled(true), canCopy(true),
       // Tooltip defaults
       ToolTipBackground{128, 128, 128}, ToolTipBorders{
                                             {1, {0, 0, 0}}, {1, {255, 255, 255}}, {1, {0, 0, 0, 0}}}
@@ -100,7 +100,7 @@ bool Control::isPointInsideControlBounds(Event *e, sp<Control> c) const
 
 void Control::eventOccured(Event *e)
 {
-	for (auto ctrlidx = Controls.rbegin(); ctrlidx != Controls.rend(); ctrlidx++)
+	for (auto ctrlidx = Controls.rbegin(); ctrlidx != Controls.rend();)
 	{
 		auto c = *ctrlidx;
 		if (c->Visible && c->Enabled)
@@ -111,16 +111,27 @@ void Control::eventOccured(Event *e)
 				return;
 			}
 		}
+
+		if ((*ctrlidx)->Removed)
+		{
+			c->Removed = false;
+			ctrlidx =
+			    decltype(Controls)::reverse_iterator(Controls.erase(std::prev(ctrlidx.base())));
+		}
+		else
+		{
+			++ctrlidx;
+		}
 	}
 
 	if (e->type() == EVENT_MOUSE_MOVE || e->type() == EVENT_MOUSE_DOWN ||
-	    e->type() == EVENT_MOUSE_UP)
+	    e->type() == EVENT_MOUSE_UP || e->type() == EVENT_MOUSE_SCROLL)
 	{
 		bool newInside = isPointInsideControlBounds(e->mouse().X, e->mouse().Y);
 		// (e->mouse().X >= resolvedLocation.x && e->mouse().X < resolvedLocation.x + Size.x &&
 		// e->mouse().Y >= resolvedLocation.y && e->mouse().Y < resolvedLocation.y + Size.y);
 
-		if (e->type() == EVENT_MOUSE_MOVE)
+		if (e->type() == EVENT_MOUSE_MOVE || e->type() == EVENT_MOUSE_SCROLL)
 		{
 			if (newInside)
 			{
@@ -307,14 +318,25 @@ void Control::eventOccured(Event *e)
 				Vec2<int> pos = {e->forms().MouseInfo.X, e->forms().MouseInfo.Y};
 				e->Handled = true;
 
-				sp<Image> textImage = ToolTipFont->getString(ToolTipText);
+				const auto lines = split(ToolTipText, "\n");
+				std::list<sp<Image>> textImages;
+				unsigned maxTextWidth = 0;
+				for (const auto &line : lines)
+				{
+					const auto textImage = ToolTipFont->getString(line);
+					if (textImage->size.x > maxTextWidth)
+						maxTextWidth = textImage->size.x;
+					textImages.push_back(textImage);
+				}
 
 				unsigned totalBorder = 0;
 				for (const auto &b : ToolTipBorders)
 					totalBorder += b.first;
 
-				sp<Surface> surface = mksp<Surface>(
-				    textImage->size + Vec2<unsigned int>{totalBorder * 2, totalBorder * 2});
+				const auto totalTextHeight = ToolTipFont->getFontHeight() * textImages.size();
+				sp<Surface> surface =
+				    mksp<Surface>(Vec2<unsigned int>{maxTextWidth, totalTextHeight} +
+				                  Vec2<unsigned int>{totalBorder * 2, totalBorder * 2});
 
 				RendererSurfaceBinding b(*fw().renderer, surface);
 
@@ -327,10 +349,32 @@ void Control::eventOccured(Event *e)
 					                        b.second, b.first);
 					i += b.first;
 				}
-				fw().renderer->draw(textImage, {totalBorder, totalBorder});
 
-				fw().showToolTip(surface, pos + resolvedLocation -
-				                              Vec2<int>{surface->size.x / 2, surface->size.y});
+				unsigned ypos = totalBorder;
+				for (const auto &textImage : textImages)
+				{
+					fw().renderer->draw(textImage, {totalBorder, ypos});
+					ypos += textImage->size.y;
+				}
+
+				int screenWidth = fw().displayGetWidth();
+
+				Vec2<int> tooltipPos =
+				    pos + resolvedLocation - Vec2<int>{surface->size.x / 2, surface->size.y};
+
+				// Check if the tooltip is off the screen
+				if (tooltipPos.x < 0)
+				{
+					tooltipPos =
+					    Vec2<int>{0, pos.y} + Vec2<int>{0, resolvedLocation.y - surface->size.y};
+				}
+				if (surface->size.x + tooltipPos.x > screenWidth)
+				{
+					tooltipPos = Vec2<int>{screenWidth - surface->size.x, pos.y} +
+					             Vec2<int>{0, resolvedLocation.y - surface->size.y};
+				}
+
+				fw().showToolTip(surface, tooltipPos);
 			}
 		}
 		else if (e->forms().EventFlag == FormEventType::MouseClick ||
@@ -346,8 +390,6 @@ void Control::eventOccured(Event *e)
 
 void Control::render()
 {
-	TRACE_FN_ARGS1("Name", this->Name);
-
 	if (!Visible || Size.x == 0 || Size.y == 0)
 	{
 		return;
@@ -458,8 +500,16 @@ void Control::configureChildrenFromXml(pugi::xml_node *parent)
 		}
 		else if (nodename == "label")
 		{
+			sp<ScrollBar> sb = nullptr;
+			UString scrollBarID = node.attribute("scrollbarid").as_string();
+
+			if (!scrollBarID.empty())
+			{
+				sb = this->findControlTyped<ScrollBar>(scrollBarID);
+			}
 			auto l = this->createChild<Label>();
 			l->configureFromXml(&node);
+			l->scroller = sb;
 		}
 		else if (nodename == "graphic")
 		{
@@ -484,11 +534,6 @@ void Control::configureChildrenFromXml(pugi::xml_node *parent)
 			if (!scrollNext.empty())
 			{
 				gb->ScrollBarNext = this->findControlTyped<ScrollBar>(scrollNext);
-			}
-			bool scrollLarge = node.attribute("scrolllarge").as_bool();
-			if (scrollLarge)
-			{
-				gb->scrollLarge = true;
 			}
 		}
 		else if (nodename == "checkbox")
@@ -528,11 +573,6 @@ void Control::configureChildrenFromXml(pugi::xml_node *parent)
 		{
 			auto sb = this->createChild<ScrollBar>();
 			sb->configureFromXml(&node);
-			UString yAttr = node.attribute("largepercent").as_string();
-			if (Strings::isInteger(yAttr))
-			{
-				sb->LargePercent = node.attribute("largepercent").as_int();
-			}
 		}
 		else if (nodename == "listbox")
 		{
@@ -654,7 +694,7 @@ void Control::configureSelfFromXml(pugi::xml_node *node)
 
 			UString widthAttr = child.attribute("width").as_string();
 			// if size ends with % this means that it is special (percentage) size
-			if (Strings::isInteger(widthAttr) && !widthAttr.endsWith("%"))
+			if (Strings::isInteger(widthAttr) && !ends_with(widthAttr, "%"))
 			{
 				Size.x = child.attribute("width").as_int();
 			}
@@ -664,7 +704,7 @@ void Control::configureSelfFromXml(pugi::xml_node *node)
 			}
 			UString heightAttr = child.attribute("height").as_string();
 			// if size ends with % this means that it is special (percentage) size
-			if (Strings::isInteger(heightAttr) && !heightAttr.endsWith("%"))
+			if (Strings::isInteger(heightAttr) && !ends_with(heightAttr, "%"))
 			{
 				Size.y = child.attribute("height").as_int();
 			}
@@ -675,7 +715,7 @@ void Control::configureSelfFromXml(pugi::xml_node *node)
 
 			if (specialsizex != "")
 			{
-				if (specialsizex.str().back() == '%')
+				if (specialsizex.back() == '%')
 				{
 					// Skip % sign at the end
 					auto sizeRatio = Strings::toFloat(specialsizex) / 100.0f;
@@ -690,7 +730,7 @@ void Control::configureSelfFromXml(pugi::xml_node *node)
 
 			if (specialsizey != "")
 			{
-				if (specialsizey.str().back() == '%')
+				if (specialsizey.back() == '%')
 				{
 					auto sizeRatio = Strings::toFloat(specialsizey) / 100.0f;
 					setRelativeHeight(sizeRatio);
@@ -725,7 +765,8 @@ void Control::configureSelfFromXml(pugi::xml_node *node)
 		}
 		else if (childName == "tooltip")
 		{
-			if (ToolTipFont = ui().getFont(child.attribute("font").as_string()))
+			const auto tooltipFont = ui().getFont(child.attribute("font").as_string());
+			if (tooltipFont)
 			{
 				ToolTipText = child.attribute("text").as_string();
 				if (!ToolTipText.empty())
@@ -862,6 +903,21 @@ sp<Form> Control::getForm()
 	return std::dynamic_pointer_cast<Form>(c);
 }
 
+void Control::setParent(sp<Control> Parent)
+{
+	if (Parent)
+	{
+		auto previousParent = this->owningControl.lock();
+		if (previousParent)
+		{
+			LogError("Reparenting control");
+		}
+		Parent->Controls.push_back(shared_from_this());
+		Parent->setDirty();
+	}
+	owningControl = Parent;
+}
+
 void Control::setParent(sp<Control> Parent, int position)
 {
 	if (Parent)
@@ -871,14 +927,7 @@ void Control::setParent(sp<Control> Parent, int position)
 		{
 			LogError("Reparenting control");
 		}
-		if (position == -1)
-		{
-			Parent->Controls.push_back(shared_from_this());
-		}
-		else
-		{
-			Parent->Controls.insert(Parent->Controls.begin() + position, shared_from_this());
-		}
+		Parent->Controls.insert(Parent->Controls.begin() + position, shared_from_this());
 		Parent->setDirty();
 	}
 	owningControl = Parent;

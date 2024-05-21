@@ -3,6 +3,7 @@
 #include "forms/graphicbutton.h"
 #include "forms/label.h"
 #include "forms/listbox.h"
+#include "forms/scrollbar.h"
 #include "forms/ui.h"
 #include "framework/data.h"
 #include "framework/event.h"
@@ -24,6 +25,8 @@ MessageLogScreen::MessageLogScreen(sp<GameState> state, CityView &cityView)
 	{
 		listbox->addItem(createMessageRow(message, state, cityView));
 	}
+	this->update();
+	listbox->scroller->scrollMax();
 }
 
 MessageLogScreen::MessageLogScreen(sp<GameState> state, BattleView &battleView)
@@ -34,6 +37,8 @@ MessageLogScreen::MessageLogScreen(sp<GameState> state, BattleView &battleView)
 	{
 		listbox->addItem(createMessageRow(message, state, battleView));
 	}
+	this->update();
+	listbox->scroller->scrollMax();
 }
 
 MessageLogScreen::~MessageLogScreen() = default;
@@ -41,19 +46,23 @@ MessageLogScreen::~MessageLogScreen() = default;
 sp<Control> MessageLogScreen::createMessageRow(EventMessage message, sp<GameState> state,
                                                CityView &cityView)
 {
-	return createMessageRow(message, state, [message, state, &cityView](Event *) {
-		cityView.setScreenCenterTile(message.location);
-		fw().stageQueueCommand({StageCmd::Command::POP});
-	});
+	return createMessageRow(message, state,
+	                        [message, state, &cityView](Event *)
+	                        {
+		                        cityView.setScreenCenterTile(message.location);
+		                        fw().stageQueueCommand({StageCmd::Command::POP});
+	                        });
 }
 
 sp<Control> MessageLogScreen::createMessageRow(EventMessage message, sp<GameState> state,
                                                BattleView &battleView)
 {
-	return createMessageRow(message, state, [message, state, &battleView](Event *) {
-		battleView.setScreenCenterTile(message.location);
-		fw().stageQueueCommand({StageCmd::Command::POP});
-	});
+	return createMessageRow(message, state,
+	                        [message, state, &battleView](Event *)
+	                        {
+		                        battleView.setScreenCenterTile(message.location);
+		                        fw().stageQueueCommand({StageCmd::Command::POP});
+	                        });
 }
 
 sp<Control> MessageLogScreen::createMessageRow(EventMessage message,
@@ -62,7 +71,7 @@ sp<Control> MessageLogScreen::createMessageRow(EventMessage message,
 {
 	auto control = mksp<Control>();
 
-	const int HEIGHT = 21;
+	int HEIGHT = message.text.size() > 55 ? 44 : 21;
 
 	auto date =
 	    control->createChild<Label>(message.time.getShortDateString(), ui().getFont("smalfont"));
@@ -86,11 +95,14 @@ sp<Control> MessageLogScreen::createMessageRow(EventMessage message,
 		auto btnImage = fw().data->loadImage(
 		    "PCK:xcom3/ufodata/newbut.pck:xcom3/ufodata/newbut.tab:57:ui/menuopt.pal");
 		auto btnLocation = control->createChild<GraphicButton>(btnImage, btnImage);
-		btnLocation->Location = text->Location + Vec2<int>{text->Size.x, 0};
-		btnLocation->Size = {22, HEIGHT};
+		btnLocation->Location = message.text.size() > 55
+		                            ? text->Location + Vec2<int>{text->Size.x, HEIGHT / 4}
+		                            : text->Location + Vec2<int>{text->Size.x, 0};
+		btnLocation->Size = {22, 21};
 		btnLocation->addCallback(FormEventType::ButtonClick, callback);
 	}
 
+	control->Size.y = HEIGHT;
 	return control;
 }
 
@@ -111,9 +123,10 @@ void MessageLogScreen::eventOccurred(Event *e)
 
 	if (e->type() == EVENT_KEY_DOWN)
 	{
-		if (e->keyboard().KeyCode == SDLK_ESCAPE)
+		if (e->keyboard().KeyCode == SDLK_ESCAPE || e->keyboard().KeyCode == SDLK_RETURN ||
+		    e->keyboard().KeyCode == SDLK_KP_ENTER)
 		{
-			fw().stageQueueCommand({StageCmd::Command::POP});
+			menuform->findControl("BUTTON_OK")->click();
 			return;
 		}
 	}

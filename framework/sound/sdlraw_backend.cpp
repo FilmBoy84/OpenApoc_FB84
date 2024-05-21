@@ -1,7 +1,6 @@
 #include "framework/framework.h"
 #include "framework/logger.h"
 #include "framework/sound_interface.h"
-#include "framework/trace.h"
 #include "library/sp.h"
 #include "library/vec.h"
 #include <SDL.h>
@@ -106,9 +105,9 @@ class SDLRawBackend : public SoundBackend
 {
 	std::recursive_mutex audio_lock;
 
-	float overall_volume;
-	float music_volume;
-	float sound_volume;
+	std::atomic<float> overall_volume;
+	std::atomic<float> music_volume;
+	std::atomic<float> sound_volume;
 
 	sp<MusicTrack> track;
 	bool music_playing;
@@ -131,7 +130,6 @@ class SDLRawBackend : public SoundBackend
 
 	void getMoreMusic()
 	{
-		TRACE_FN;
 		std::lock_guard<std::recursive_mutex> lock(this->audio_lock);
 		if (!this->music_playing)
 		{
@@ -174,8 +172,6 @@ class SDLRawBackend : public SoundBackend
 				LogWarning("Failed to convert music data");
 			}
 
-			data->samples.resize(output_size);
-
 			if (ret == MusicTrack::MusicCallbackReturn::End)
 			{
 				this->track = nullptr;
@@ -191,7 +187,6 @@ class SDLRawBackend : public SoundBackend
   public:
 	void mixingCallback(Uint8 *stream, int len)
 	{
-		TRACE_FN;
 		// initialize stream buffer
 		memset(stream, 0, len);
 		std::lock_guard<std::recursive_mutex> lock(this->audio_lock);
@@ -269,9 +264,10 @@ class SDLRawBackend : public SoundBackend
 		}
 	}
 
-	SDLRawBackend()
-	    : overall_volume(1.0f), music_volume(1.0f), sound_volume(1.0f), music_playing(false),
-	      music_callback_data(nullptr), music_queue_size(2)
+	SDLRawBackend(int concurrent_sample_count)
+	    : SoundBackend(concurrent_sample_count), overall_volume(1.0f), music_volume(1.0f),
+	      sound_volume(1.0f), music_playing(false), music_callback_data(nullptr),
+	      music_queue_size(2)
 	{
 		SDL_Init(SDL_INIT_AUDIO);
 		preferred_format.channels = 2;
@@ -322,9 +318,15 @@ class SDLRawBackend : public SoundBackend
 		}
 		{
 			std::lock_guard<std::recursive_mutex> l(this->audio_lock);
+			if (this->live_samples.size() > this->concurrent_samples)
+			{
+				LogInfo("Skipping sound %s as we already have %d on queue", sample->path,
+				        this->live_samples.size());
+				return;
+			}
 			this->live_samples.emplace_back(sample, gain);
 		}
-		LogInfo("Placed sound %p on queue", sample.get());
+		LogInfo("Placed sound %s on queue", sample->path);
 	}
 
 	void playMusic(std::function<void(void *)> finishedCallback, void *callbackData) override
@@ -343,7 +345,7 @@ class SDLRawBackend : public SoundBackend
 	void setTrack(sp<MusicTrack> track) override
 	{
 		std::lock_guard<std::recursive_mutex> l(this->audio_lock);
-		LogInfo("Setting track to %p", track.get());
+		LogInfo("Setting track to %s", track->path);
 		this->track = track;
 		while (!music_queue.empty())
 			music_queue.pop();
@@ -424,7 +426,7 @@ void unwrap_callback(void *userdata, Uint8 *stream, int len)
 class SDLRawBackendFactory : public SoundBackendFactory
 {
   public:
-	SoundBackend *create() override
+	SoundBackend *create(int concurrent_sample_count) override
 	{
 		LogWarning("Creating SDLRaw sound backend (Might have issues!)");
 		int ret = SDL_InitSubSystem(SDL_INIT_AUDIO);
@@ -433,7 +435,9 @@ class SDLRawBackendFactory : public SoundBackendFactory
 			LogWarning("Failed to init SDL_AUDIO (%d) - %s", ret, SDL_GetError());
 			return nullptr;
 		}
-		return new SDLRawBackend();
+		// We do sw mixing so can support "any" concurrent sample count (though realistically
+		// limited by cpu performance)
+		return new SDLRawBackend(concurrent_sample_count);
 	}
 
 	~SDLRawBackendFactory() override = default;

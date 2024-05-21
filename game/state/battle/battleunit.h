@@ -140,9 +140,13 @@ static const std::list<BattleUnitType> BattleUnitTypeList = {
     BattleUnitType::LargeFlyer, BattleUnitType::LargeWalker, BattleUnitType::SmallFlyer,
     BattleUnitType::SmallWalker};
 
-class BattleUnit : public StateObject, public std::enable_shared_from_this<BattleUnit>
+// Get cost of psi attack or upkeep
+static int getPsiCost(PsiStatus status, bool attack = true);
+// Get chance of psi attack going through psi defence
+static int getPsiAttackChance(int psiAttack, int psiDefense, PsiStatus status, bool attack = true);
+
+class BattleUnit : public StateObject<BattleUnit>, public std::enable_shared_from_this<BattleUnit>
 {
-	STATE_OBJECT(BattleUnit)
   public:
 	// [Enums]
 
@@ -363,6 +367,8 @@ class BattleUnit : public StateObject, public std::enable_shared_from_this<Battl
 	void init(GameState &state);
 	// Clears all possible cases of circular refs
 	void destroy() override;
+	// Reload weapons before the battle begins
+	void reloadWeapons(GameState &state);
 
 	// Squad
 
@@ -407,11 +413,9 @@ class BattleUnit : public StateObject, public std::enable_shared_from_this<Battl
 	bool hasLineToPosition(Vec3<float> targetPosition, bool useLOS = false) const;
 
 	// Psi
-
-	// Get cost of psi attack or upkeep
-	int getPsiCost(PsiStatus status, bool attack = true);
 	// Get chance of psi attack to succeed
-	int getPsiChance(StateRef<BattleUnit> target, PsiStatus status, StateRef<AEquipmentType> item);
+	int getPsiChanceForEquipment(StateRef<BattleUnit> target, PsiStatus status,
+	                             StateRef<AEquipmentType> item);
 	// Starts attacking target, returns if attack successful
 	bool startAttackPsi(GameState &state, StateRef<BattleUnit> target, PsiStatus status,
 	                    StateRef<AEquipmentType> item);
@@ -674,6 +678,7 @@ class BattleUnit : public StateObject, public std::enable_shared_from_this<Battl
 	// Determine body part hit
 	BodyPart determineBodyPartHit(StateRef<DamageType> damageType, Vec3<float> cposition,
 	                              Vec3<float> direction);
+
 	// Returns true if sound and doodad were handled by it
 	bool applyDamage(GameState &state, int power, StateRef<DamageType> damageType,
 	                 BodyPart bodyPart, DamageSource source,
@@ -682,6 +687,8 @@ class BattleUnit : public StateObject, public std::enable_shared_from_this<Battl
 	void applyDamageDirect(GameState &state, int damage, bool generateFatalWounds,
 	                       BodyPart fatalWoundPart, int stunPower,
 	                       StateRef<BattleUnit> attacker = nullptr, bool violent = true);
+	// Calculate chance of resisting psi-damage and apply damage to morale
+	void applyMoraleDamage(int moraleDamage, int psiAttackPower, GameState &state);
 
 	// Returns true if sound and doodad were handled by it
 	bool handleCollision(GameState &state, Collision &c);
@@ -832,5 +839,10 @@ class BattleUnit : public StateObject, public std::enable_shared_from_this<Battl
 	                       StateRef<BattleUnit> targetUnit = StateRef<BattleUnit>());
 	// Update both this unit's vision and other unit's vision of this unit
 	void refreshUnitVisibilityAndVision(GameState &state);
+
+	// Increment mission count if agent survives battle
+	void completedMission();
+	// Increment agent kill count
+	void recordKill();
 };
 } // namespace OpenApoc

@@ -73,14 +73,13 @@ class RoadSegment
 	std::list<Vec3<int>> findPathThrough(int id) const;
 };
 
-class City : public StateObject, public std::enable_shared_from_this<City>
+class City : public StateObject<City>, public std::enable_shared_from_this<City>
 {
-	STATE_OBJECT(City)
   public:
 	City() = default;
 	~City() override;
 
-	void initMap(GameState &state);
+	void initCity(GameState &state);
 
 	UString id;
 	Vec3<int> size = {0, 0, 0};
@@ -96,6 +95,9 @@ class City : public StateObject, public std::enable_shared_from_this<City>
 	std::set<sp<Projectile>> projectiles;
 
 	up<TileMap> map;
+
+	// Economy: default civilian salary that setting their expectations
+	int civilianSalary = 0;
 
 	// Unlocks when visiting this
 	std::list<StateRef<ResearchTopic>> researchUnlock;
@@ -113,8 +115,13 @@ class City : public StateObject, public std::enable_shared_from_this<City>
 
 	Vec3<float> cityViewScreenCenter = {0.0f, 0.0f, 0.0f};
 	int cityViewPageIndex = 0;
-	std::list<StateRef<Vehicle>> cityViewSelectedVehicles;
-	std::list<StateRef<Agent>> cityViewSelectedAgents;
+	std::list<StateRef<Vehicle>> cityViewSelectedOwnedVehicles;
+	std::list<StateRef<Vehicle>> cityViewSelectedOtherVehicles;
+	std::list<StateRef<Agent>> cityViewSelectedSoldiers;
+	std::list<StateRef<Agent>> cityViewSelectedCivilians;
+	std::list<StateRef<Agent>> cityViewSelectedBios;
+	std::list<StateRef<Agent>> cityViewSelectedPhysics;
+	std::list<StateRef<Agent>> cityViewSelectedEngineers;
 	StateRef<Organisation> cityViewSelectedOrganisation;
 	int cityViewOrgButtonIndex = 0;
 
@@ -128,7 +135,8 @@ class City : public StateObject, public std::enable_shared_from_this<City>
 	void generatePortals(GameState &state);
 	void updateInfiltration(GameState &state);
 	void repairVehicles(GameState &state);
-	void repairScenery(GameState &state);
+	void repairScenery(GameState &state, bool debugRepair = false);
+	std::set<sp<OpenApoc::Vehicle>> findConstructionVehicles(GameState &state);
 
 	void initialSceneryLinkUp();
 
@@ -162,8 +170,10 @@ class City : public StateObject, public std::enable_shared_from_this<City>
 	                                  Vec3<float> &target, int accuracy, bool cloaked);
 
 	// Following members are not serialized, but rather are set in initCity method
-
 	std::list<StateRef<Building>> spaceports;
+	int populationUnemployed = 0;
+	int populationWorking = 0;
+	int averageWage = 0;
 };
 
 }; // namespace OpenApoc

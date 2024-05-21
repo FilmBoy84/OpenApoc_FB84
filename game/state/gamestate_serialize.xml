@@ -22,6 +22,10 @@
 		<member type="Section">agent_body_types</member>
 		<member type="Section">agent_equipment_layouts</member>
 		<member type="Section">agent_generator</member>
+		<member type="Section">organisation_raid_rules</member>
+		<member>weekly_rating_rules</member>
+		<member>agent_salary</member>
+		<member>agent_fired_penalty</member>
 		<member>initial_agents</member>
 		<member>initial_facilities</member>
 		<member>initial_agent_equipment</member>
@@ -62,7 +66,9 @@
 		<member type="Section">equipment_sets_by_level</member>
 		<member type="Section">building_functions</member>
 		<member>messages</member>
+		<member>baseIndex</member>
 		<member>difficulty</member>
+		<member>fundingTerminated</member>
 		<member>firstDetection</member>
 		<member>nextInvasion</member>
 	</object>
@@ -132,6 +138,7 @@
 		<member>improvementPercentagePsi</member>
 		<member>canTrain</member>
 		<member>playable</member>
+		<member>availableAtTheGameStart</member>
 		<member>allowsDirectControl</member>
 		<member>aiType</member>
 		<member>immuneToFatalWounds</member>
@@ -168,6 +175,7 @@
 		<name>AEquipment</name>
 		<member>type</member>
 		<member>payloadType</member>
+		<member>lastLoadedAmmoType</member>
 		<member>equippedPosition</member>
 		<member>equippedSlotType</member>
 		<member>ownerAgent</member>
@@ -237,7 +245,7 @@
 		<member>trainingPsiTicksAccumulated</member>
 		<member>trainingAssignment</member>
 		<member>recentlyHired</member>
-		<member>recentryTransferred</member>
+		<member>recentlyTransferred</member>
 		<member>recentlyFought</member>
 		<member>healingProgress</member>
 		<member>owner</member>
@@ -255,6 +263,9 @@
 		<member>teleportTicksAccumulated</member>
 		<member>equipment</member>
 		<member>destroyAfterBattle</member>
+		<member>hiredOn</member>
+		<member>killCount</member>
+		<member>missionCount</member>
 	</object>
 	<object>
 		<name>AgentPortrait</name>
@@ -356,11 +367,13 @@
 		<value>CargoExpiresSoon</value>
 		<value>MissionCompletedBuildingRaid</value>
 		<value>MissionCompletedBuildingNormal</value>
+		<value>OrganisationAttackBuilding</value>
+		<value>OrganisationRaidBuilding</value>
+		<value>OrganisationStormBuilding</value>
+		<value>OrganisationTreatySigned</value>
 		<value>AlienTakeover</value>
-		<value>OrganizationAttack</value>
-		<value>OrganizationRaid</value>
-		<value>OrganizationTreaty</value>
-		<value>OrganizationBribe</value>
+		<value>OrganisationRequestBribe</value>
+		<value>OrganisationRequestAlliance</value>
 		<value>AgentArrived</value>
 		<value>AgentUnableToReach</value>
 		<value>HostileSpotted</value>
@@ -959,11 +972,16 @@
 		<member>initial_portals</member>
 		<member>tileToRoadSegmentMap</member>
 		<member>roadSegments</member>
+		<member>civilianSalary</member>
 		<member>researchUnlock</member>
 		<member>cityViewScreenCenter</member>
 		<member>cityViewPageIndex</member>
-		<member>cityViewSelectedVehicles</member>
-		<member>cityViewSelectedAgents</member>
+		<member>cityViewSelectedOwnedVehicles</member>
+		<member>cityViewSelectedOtherVehicles</member>
+		<member>cityViewSelectedSoldiers</member>
+		<member>cityViewSelectedBios</member>
+		<member>cityViewSelectedPhysics</member>
+		<member>cityViewSelectedEngineers</member>
 		<member>cityViewSelectedOrganisation</member>
 		<member>cityViewOrgButtonIndex</member>
 	</object>
@@ -1044,6 +1062,12 @@
 	<object>
 		<name>BuildingFunction</name>
 		<member>name</member>
+		<member>baseCost</member>
+		<member>baseIncome</member>
+		<member>workersPerTile</member>
+		<member>agentSpawnType</member>
+		<member>investmentValue</member>
+		<member>prestige</member>
 		<member>infiltrationSpeed</member>
 		<member>detectionWeight</member>
 		<member>ufopaedia_entry</member>
@@ -1064,6 +1088,15 @@
 		<member>currentVehicles</member>
 		<member>currentAgents</member>
 		<member>cargo</member>
+		<member>isPurchesable</member>
+		<member>purchasePrice</member>
+		<member>maintenanceCosts</member>
+		<member>maximumWorkforce</member>
+		<member>currentWorkforce</member>
+		<member>incomePerCapita</member>
+		<member>currentWage</member>
+		<member>investment</member>
+		<member>prestige</member>
 		<member>ticksDetectionTimeOut</member>
 		<member>ticksDetectionAttemptAccumulated</member>
 		<member>detected</member>
@@ -1119,6 +1152,7 @@
 		<member>height</member>
 		<member>overlayHeight</member>
 		<member>basement</member>
+		<member>isBuildingPart</member>
 		<member>commonProperty</member>
 		<member>isHill</member>
 	</object>
@@ -1157,6 +1191,7 @@
 		<value>Fire</value>
 		<value>Enzyme</value>
 		<value>Brainsucker</value>
+		<value>Psionic</value>
 	</enum>
 	<object>
 		<name>DamageType</name>
@@ -1202,6 +1237,7 @@
 		<member>provides_flight</member>
 		<member>weapon_types</member>
 		<member>max_ammo</member>
+		<member>burst</member>
 		<member>recharge</member>
 		<member>rechargeTB</member>
 		<member>speed</member>
@@ -1231,6 +1267,7 @@
 		<member>name</member>
 		<member>weight</member>
 		<member>max_ammo</member>
+		<member>burst</member>
 		<member>ammo_type</member>
 		<member>equipscreen_sprite</member>
 		<member>equipscreen_size</member>
@@ -1268,6 +1305,7 @@
 		<member>teleporting</member>
 		<member>dimensionShifting</member>
 		<member>scoreRequirement</member>
+		<member>research_dependency</member>
 	</object>
 	<object>
 		<name>DoodadFrame</name>
@@ -1290,6 +1328,26 @@
 		<member>sector</member>
 	</object>
 	<enum>
+		<name>OrganisationRaid::Type</name>
+		<value>None</value>
+		<value>Attack</value>
+		<value>Raid</value>
+		<value>Storm</value>
+		<value>UnauthorizedVehicle</value>
+		<value>Treaty</value>
+	</enum>
+	<object>
+		<name>OrganisationRaid</name>
+		<member>nextRaidTimer</member>
+		<member>attack_vehicle_types</member>
+		<member>neutral_low_manpower</member>
+		<member>neutral_normal</member>
+		<member>neutral_high_manpower</member>
+		<member>military_low_manpower</member>
+		<member>military_normal</member>
+		<member>military_high_manpower</member>
+	</object>
+	<enum>
 		<name>Organisation::MissionPattern::Target</name>
 		<value>Owned</value>
 		<value>OwnedOrOther</value>
@@ -1306,9 +1364,15 @@
 		<value>Hostile</value>
 	</enum>
 	<object>
-		<name>Organisation::Mission</name>
-		<member>next</member>
+		<name>Organisation::RecurringMission</name>
+		<member>time</member>
 		<member>pattern</member>
+	</object>
+	<object>
+		<name>Organisation::RaidMission</name>
+		<member>time</member>
+		<member>type</member>
+		<member>target</member>
 	</object>
 	<object>
 		<name>Organisation::MissionPattern</name>
@@ -1326,10 +1390,15 @@
 		<member>name</member>
 		<member>balance</member>
 		<member>income</member>
+		<member>rebuildingRate</member>
 		<member>infiltrationValue</member>
+		<member>infiltrationHistory</member>
 		<member>infiltrationSpeed</member>
-		<member>takenOver</member>
 		<member>ticksTakeOverAttemptAccumulated</member>
+		<member>takenOver</member>
+		<member>militarized</member>
+		<member>initiatesDiplomacy</member>
+		<member>providesTransportationServices</member>
 		<member>tech_level</member>
 		<member>average_guards</member>
 		<member>guard_types_reinforcements</member>
@@ -1338,10 +1407,11 @@
 		<member>loot</member>
 		<member>icon</member>
 		<member>current_relations</member>
+		<member>long_term_relations</member>
 		<member>ufopaedia_entry</member>
-		<member>missions</member>
+		<member>raid_missions</member>
+		<member>recurring_missions</member>
 		<member>vehiclePark</member>
-		<member>providesTransportationServices</member>
 		<member>hirableAgentTypes</member>
 	</object>
 	<object>

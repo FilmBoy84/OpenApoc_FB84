@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/state/gametime.h"
+#include "game/state/rules/city/organisationraid.h"
 #include "game/state/stateobject.h"
 #include "library/strings.h"
 #include <list>
@@ -33,9 +34,8 @@ class VehicleType;
 class UfopaediaEntry;
 class Image;
 
-class Organisation : public StateObject
+class Organisation : public StateObject<Organisation>
 {
-	STATE_OBJECT(Organisation)
   public:
 	enum class PurchaseResult
 	{
@@ -83,30 +83,47 @@ class Organisation : public StateObject
 		               unsigned maxAmount, std::set<StateRef<VehicleType>> allowedTypes,
 		               Target target, std::set<Relation> relation = {});
 	};
-	class Mission
+	class RecurringMission
 	{
 	  public:
-		uint64_t next = 0;
+		uint64_t time = 0;
 		MissionPattern pattern;
+		int maxLiners = 16;
 
 		void execute(GameState &state, StateRef<City> city, StateRef<Organisation> owner);
 
-		Mission() = default;
-		Mission(uint64_t next, uint64_t minIntervalRepeat, uint64_t maxIntervalRepeat,
-		        unsigned minAmount, unsigned maxAmount,
-		        std::set<StateRef<VehicleType>> allowedTypes, MissionPattern::Target target,
-		        std::set<Relation> relation = {});
+		RecurringMission() = default;
+		RecurringMission(uint64_t next, uint64_t minIntervalRepeat, uint64_t maxIntervalRepeat,
+		                 unsigned minAmount, unsigned maxAmount,
+		                 std::set<StateRef<VehicleType>> allowedTypes,
+		                 MissionPattern::Target target, std::set<Relation> relation = {});
+	};
+	class RaidMission
+	{
+	  public:
+		uint64_t time = 0;
+		OrganisationRaid::Type type;
+		StateRef<Building> target;
+
+		RaidMission() = default;
+		RaidMission(uint64_t when, OrganisationRaid::Type type, StateRef<Building> building);
+		void execute(GameState &state, StateRef<City> city, StateRef<Organisation> owner);
 	};
 
 	UString id;
 	UString name;
 	int balance = 0;
 	int income = 0;
+	unsigned int rebuildingRate = 0;
 	int infiltrationValue = 0;
+	std::list<int> infiltrationHistory;
 	// Modified for all infiltration attempts at this org
 	int infiltrationSpeed = 0;
-	bool takenOver = false;
 	unsigned int ticksTakeOverAttemptAccumulated = 0;
+	bool takenOver = false;
+	bool militarized = false;
+	bool initiatesDiplomacy = false;
+	bool providesTransportationServices = false;
 
 	sp<Image> icon;
 
@@ -121,21 +138,25 @@ class Organisation : public StateObject
 
 	StateRef<UfopaediaEntry> ufopaedia_entry;
 
-	std::map<StateRef<City>, std::list<Mission>> missions;
+	std::map<StateRef<City>, std::list<RaidMission>> raid_missions;
+	std::map<StateRef<City>, std::list<RecurringMission>> recurring_missions;
 	std::map<StateRef<VehicleType>, int> vehiclePark;
-	bool providesTransportationServices = false;
 	// Hirable agent types, min and max growth per day
 	std::map<StateRef<AgentType>, std::pair<int, int>> hirableAgentTypes;
 
 	Organisation() = default;
 
+	void setRaidMissions(GameState &state, StateRef<City> city);
 	void updateMissions(GameState &state);
 	void updateHirableAgents(GameState &state);
 	void updateInfiltration(GameState &state);
 	void updateTakeOver(GameState &state, unsigned int ticks);
 	void updateVehicleAgentPark(GameState &state);
+	void updateDailyInfiltrationHistory();
+	float updateRelations(StateRef<Organisation> &playerOrg);
 
 	int getGuardCount(GameState &state) const;
+	StateRef<Building> pickRandomBuilding(GameState &state, StateRef<City> city) const;
 
 	void takeOver(GameState &state, bool forced = false);
 
@@ -155,12 +176,16 @@ class Organisation : public StateObject
 	bool isPositiveTo(const StateRef<Organisation> &other) const;
 	bool isNegativeTo(const StateRef<Organisation> &other) const;
 	// Calculate the cost of a bribe.
-	int costOfBribeBy(const StateRef<Organisation> &other) const;
+	int costOfBribeBy(GameState &state, const StateRef<Organisation> &other) const;
+	int diplomaticRiftOffer(GameState &state, const StateRef<Organisation> &other) const;
 	// The organisation is bribed by other org.
 	bool bribedBy(GameState &state, StateRef<Organisation> other, int bribe);
+	void signTreatyWith(GameState &state, StateRef<Organisation> other, int bribe,
+	                    bool forceAlliance = false);
 	float getRelationTo(const StateRef<Organisation> &other) const;
 	void adjustRelationTo(GameState &state, StateRef<Organisation> other, float value);
 	std::map<StateRef<Organisation>, float> current_relations;
+	std::map<StateRef<Organisation>, float> long_term_relations;
 
 	// Following members are not serialized, but rather are set in initCity method
 

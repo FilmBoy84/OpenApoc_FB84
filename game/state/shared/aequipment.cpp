@@ -1,7 +1,7 @@
 #include "game/state/shared/aequipment.h"
-#include "framework/configfile.h"
 #include "framework/framework.h"
 #include "framework/logger.h"
+#include "framework/options.h"
 #include "framework/sound.h"
 #include "game/state/battle/battle.h"
 #include "game/state/battle/battleitem.h"
@@ -288,6 +288,44 @@ void AEquipment::startFiring(WeaponAimingMode fireMode, bool instant)
 	aimingMode = fireMode;
 }
 
+static sp<AEquipment> getAutoreloadAmmoType(const AEquipment &weapon)
+{
+	LogAssert(weapon.type->type == AEquipmentType::Type::Weapon);
+	LogAssert(weapon.getPayloadType() != weapon.type);
+
+	// Check if the auto-reload option is disabled
+	if (!Options::optionAutoReload.get())
+	{
+		return nullptr;
+	}
+
+	// Prefer loading the same type of ammo again
+	if (weapon.lastLoadedAmmoType)
+	{
+		auto equippedAmmo = weapon.ownerAgent->getFirstItemByType(weapon.lastLoadedAmmoType);
+		if (equippedAmmo)
+		{
+			LogAssert(equippedAmmo->type->type == AEquipmentType::Type::Ammo);
+			return equippedAmmo;
+		}
+	}
+	// Otherwise find any possible ammo on the agent
+	if (!config().getBool("OpenApoc.NewFeature.LoadSameAmmo"))
+	{
+		for (const auto &ammoType : weapon.type->ammo_types)
+		{
+			auto equippedAmmo = weapon.ownerAgent->getFirstItemByType(ammoType);
+			if (equippedAmmo)
+			{
+				LogAssert(equippedAmmo->type->type == AEquipmentType::Type::Ammo);
+				return equippedAmmo;
+			}
+		}
+	}
+	// No ammo found
+	return nullptr;
+}
+
 void AEquipment::loadAmmo(GameState &state, sp<AEquipment> ammoItem)
 {
 	// Cannot load if this is using itself for payload or is not a weapon
@@ -295,36 +333,39 @@ void AEquipment::loadAmmo(GameState &state, sp<AEquipment> ammoItem)
 	{
 		return;
 	}
-	// If no ammoItem is supplied then look in the agent's inventory
-	if (!ammoItem)
+	if (ammoItem)
 	{
+		// Check if supplied ammo is of correct type
+		if (ammoItem->type->type != AEquipmentType::Type::Ammo ||
+		    std::find(type->ammo_types.begin(), type->ammo_types.end(), ammoItem->type) ==
+		        type->ammo_types.end())
+		{
+			LogError("Incorrect ammo type \"%s\" for \"%s\"", ammoItem->type->name, type->name);
+			return;
+		}
+	}
+	else
+	{
+		// If no ammoItem is supplied then look in the agent's inventory
 		if (!ownerAgent)
 		{
 			LogError("Trying to auto-reload a weapon not in agent inventory!?");
 			return;
 		}
-		auto it = type->ammo_types.rbegin();
-		while (it != type->ammo_types.rend())
+		ammoItem = getAutoreloadAmmoType(*this);
+	}
+	// No ammo was found in the inventory
+	if (!ammoItem)
+	{
+		if (ownerAgent->unit)
 		{
-			ammoItem = ownerAgent->getFirstItemByType(*it);
-			if (ammoItem)
-			{
-				break;
-			}
-			it++;
+			ownerAgent->unit->sendAgentEvent(state, GameEventType::AgentOutOfAmmo, true);
 		}
-	}
-	// Cannot load non-ammo or if no ammo was found in the inventory
-	if (!ammoItem || ammoItem->type->type != AEquipmentType::Type::Ammo)
-	{
 		return;
 	}
-	// Cannot load if inappropriate type
-	if (std::find(type->ammo_types.begin(), type->ammo_types.end(), ammoItem->type) ==
-	    type->ammo_types.end())
-	{
-		return;
-	}
+
+	// Store the loaded ammo type for autoreload
+	lastLoadedAmmoType = ammoItem->type;
 
 	// If this has ammo then swap
 	if (payloadType)
@@ -702,11 +743,14 @@ void AEquipment::fire(GameState &state, Vec3<float> targetPosition, StateRef<Bat
 	auto unit = ownerAgent->unit;
 	auto payload = getPayloadType();
 	Vec3<float> originalTarget = targetPosition;
+	int number_of_shots;
 
 	if (payload->fire_sfx)
 	{
 		fw().soundBackend->playSample(payload->fire_sfx, unit->position);
 	}
+
+	number_of_shots = std::min(this->type->burst, this->ammo);
 
 	if (type->launcher)
 	{
@@ -730,7 +774,11 @@ void AEquipment::fire(GameState &state, Vec3<float> targetPosition, StateRef<Bat
 			return;
 		}
 		// Throw item (accuracy applied inside)
-		item->throwItem(state, targetPosition, velocityXY, velocityZ, true);
+
+		for (int shot_number = 0; shot_number < number_of_shots; shot_number++)
+		{
+			item->throwItem(state, targetPosition, velocityXY, velocityZ, true);
+		}
 	}
 	else
 	{
@@ -738,34 +786,42 @@ void AEquipment::fire(GameState &state, Vec3<float> targetPosition, StateRef<Bat
 
 		auto fromPos = unitPos * VELOCITY_SCALE_BATTLE;
 		auto toPos = targetPosition * VELOCITY_SCALE_BATTLE;
-		// Apply accuracy algorithm
-		Battle::accuracyAlgorithmBattle(state, fromPos, toPos,
-		                                getAccuracy(unit->current_body_state,
-		                                            unit->current_movement_state,
-		                                            unit->fire_aiming_mode),
-		                                targetUnit && targetUnit->isCloaked());
-		// Fire
-		Vec3<float> velocity = toPos - fromPos;
-		velocity = glm::normalize(velocity);
-		// Move projectile a little bit forward so that it does not shoot from inside our chest
-		// We are protecting firer from collision for first frames anyway, so this is redundant
-		// for all cases except when a unit fires with a brainsucker on it's head!
-		// But this also looks better since it does visually fire from the muzzle, not from inside
-		// the soldier
-		unitPos += velocity * 3.5f / 8.0f;
-		// Scale velocity according to speed
-		velocity *= payload->speed * PROJECTILE_VELOCITY_MULTIPLIER;
 
-		if (state.current_battle->map->tileIsValid(unitPos))
+		for (int shot_number = 0; shot_number < number_of_shots; shot_number++)
 		{
-			auto p = mksp<Projectile>(
-			    payload->guided ? Projectile::Type::Missile : Projectile::Type::Beam, unit,
-			    targetUnit, originalTarget, unitPos, velocity, payload->turn_rate, payload->ttl,
-			    payload->damage, payload->projectile_delay, payload->explosion_depletion_rate,
-			    payload->tail_size, payload->projectile_sprites, payload->impact_sfx,
-			    payload->explosion_graphic, payload->damage_type);
-			state.current_battle->map->addObjectToMap(p);
-			state.current_battle->projectiles.insert(p);
+			// Apply accuracy algorithm
+			Battle::accuracyAlgorithmBattle(state, fromPos, toPos,
+			                                getAccuracy(unit->current_body_state,
+			                                            unit->current_movement_state,
+			                                            unit->fire_aiming_mode),
+			                                targetUnit && targetUnit->isCloaked());
+			// Fire
+			Vec3<float> velocity = toPos - fromPos;
+			velocity = glm::normalize(velocity);
+			// Move projectile a little bit forward so that it does not shoot from inside our chest
+			// We are protecting firer from collisison for first frames anyway, so this is redundant
+			// for all cases except when a unit fires with a brainsucker on it's head!
+			// But this also looks better since it does visually fire from the muzzle, not from
+			// inside
+			// the soldier
+			unitPos += velocity * 3.5f / 8.0f;
+			// Scale velocity according to speed
+			velocity *= payload->speed * PROJECTILE_VELOCITY_MULTIPLIER;
+
+			if (state.current_battle->map->tileIsValid(unitPos))
+			{
+				const auto projectile_type =
+				    payload->guided ? Projectile::Type::Missile : Projectile::Type::Beam;
+
+				auto projectile = mksp<Projectile>(
+				    projectile_type, unit, targetUnit, originalTarget, unitPos, velocity,
+				    payload->turn_rate, payload->ttl, payload->damage, payload->projectile_delay,
+				    payload->explosion_depletion_rate, payload->tail_size,
+				    payload->projectile_sprites, payload->impact_sfx, payload->explosion_graphic,
+				    payload->damage_type);
+				state.current_battle->map->addObjectToMap(projectile);
+				state.current_battle->projectiles.insert(projectile);
+			}
 		}
 	}
 
@@ -773,7 +829,11 @@ void AEquipment::fire(GameState &state, Vec3<float> targetPosition, StateRef<Bat
 	if (!config().getBool("OpenApoc.Cheat.InfiniteAmmo") ||
 	    this->ownerAgent->owner != state.getPlayer())
 	{
-		ammo--;
+		if (this->ammo < number_of_shots)
+		{
+			number_of_shots = this->ammo;
+		}
+		this->ammo -= number_of_shots;
 	}
 	if (ammo == 0 && payloadType)
 	{
@@ -813,12 +873,13 @@ void AEquipment::throwItem(GameState &state, Vec3<int> targetPosition, float vel
 	velocityZ *= targetVectorDifference;
 
 	auto bi = state.current_battle->placeItem(state, shared_from_this(), position);
-
-	bi->velocity =
-	    (glm::normalize(Vec3<float>{targetVectorModified.x, targetVectorModified.y, 0.0f}) *
-	         velocityXY +
-	     Vec3<float>{0.0f, 0.0f, velocityZ}) *
-	    VELOCITY_SCALE_BATTLE;
+	// prevent normalizing of 0 vector throwing exception
+	Vec3<float> norm = {0.0f, 0.0f, 0.0f};
+	if (targetVectorModified.x != 0.0f && targetVectorModified.y != 0.0f)
+	{
+		norm = glm::normalize(Vec3<float>{targetVectorModified.x, targetVectorModified.y, 0.0f});
+	}
+	bi->velocity = (norm * velocityXY + Vec3<float>{0.0f, 0.0f, velocityZ}) * VELOCITY_SCALE_BATTLE;
 	bi->falling = true;
 	// 36 / (velocity length) = enough ticks to pass 1 whole tile
 	bi->ownerInvulnerableTicks =

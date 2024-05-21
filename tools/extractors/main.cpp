@@ -1,7 +1,6 @@
 #include "framework/configfile.h"
 #include "framework/data.h"
 #include "framework/framework.h"
-#include "framework/trace.h"
 #include "game/state/gamestate.h"
 #include "game/state/rules/battle/battlemapsector.h"
 #include "game/state/rules/battle/battlemaptileset.h"
@@ -12,6 +11,15 @@
 #include <list>
 
 using namespace OpenApoc;
+
+// FIXME: Make this dynamic?
+
+std::vector<UString> supported_languages = {
+    "cs.UTF-8",    "de_DE.UTF-8", "en.UTF-8",     "en_GB.UTF-8", "es.UTF-8",
+    "et_EE.UTF-8", "fi.UTF-8",    "fil_PH.UTF-8", "fr_FR.UTF-8", "hu_HU.UTF-8",
+    "it.UTF-8",    "ja.UTF-8",    "ja_JP.UTF-8",  "lt.UTF-8",    "nb_NO.UTF-8",
+    "pl.UTF-8",    "pt_BR.UTF-8", "pt_PT.UTF-8",  "ro_RO.UTF-8", "ru_RU.UTF-8",
+    "sk.UTF-8",    "sl_SI.UTF-8", "tr_TR.UTF-8",  "uk.UTF-8",    "zh_TW.UTF-8"};
 
 static ConfigOptionString outputPath("Extractor", "output",
                                      "Path to the extractor output directory", "./data");
@@ -31,38 +39,44 @@ static void extractDifficulty(const InitialGameStateExtractor &e, UString output
 }
 
 std::map<UString, std::function<void(const InitialGameStateExtractor &e)>> thingsToExtract = {
+    {"difficulty0",
+     [](const InitialGameStateExtractor &e)
+     {
+	     extractDifficulty(
+	         e, outputPath.get() + "/mods/base/data/submods/org.openapoc.base/difficulty0",
+	         InitialGameStateExtractor::Difficulty::DIFFICULTY_1, "data/difficulty0_patch");
+     }},
     {"difficulty1",
-     [](const InitialGameStateExtractor &e) {
-	     extractDifficulty(e, outputPath.get() + "/mods/base/difficulty1_patched",
-	                       InitialGameStateExtractor::Difficulty::DIFFICULTY_1,
-	                       "data/difficulty1_patch");
+     [](const InitialGameStateExtractor &e)
+     {
+	     extractDifficulty(
+	         e, outputPath.get() + "/mods/base/data/submods/org.openapoc.base/difficulty1",
+	         InitialGameStateExtractor::Difficulty::DIFFICULTY_2, "data/difficulty1_patch");
      }},
     {"difficulty2",
-     [](const InitialGameStateExtractor &e) {
-	     extractDifficulty(e, outputPath.get() + "/mods/base/difficulty2_patched",
-	                       InitialGameStateExtractor::Difficulty::DIFFICULTY_2,
-	                       "data/difficulty2_patch");
+     [](const InitialGameStateExtractor &e)
+     {
+	     extractDifficulty(
+	         e, outputPath.get() + "/mods/base/data/submods/org.openapoc.base/difficulty2",
+	         InitialGameStateExtractor::Difficulty::DIFFICULTY_3, "data/difficulty2_patch");
      }},
     {"difficulty3",
-     [](const InitialGameStateExtractor &e) {
-	     extractDifficulty(e, outputPath.get() + "/mods/base/difficulty3_patched",
-	                       InitialGameStateExtractor::Difficulty::DIFFICULTY_3,
-	                       "data/difficulty3_patch");
+     [](const InitialGameStateExtractor &e)
+     {
+	     extractDifficulty(
+	         e, outputPath.get() + "/mods/base/data/submods/org.openapoc.base/difficulty3",
+	         InitialGameStateExtractor::Difficulty::DIFFICULTY_4, "data/difficulty3_patch");
      }},
     {"difficulty4",
-     [](const InitialGameStateExtractor &e) {
-	     extractDifficulty(e, outputPath.get() + "/mods/base/difficulty4_patched",
-	                       InitialGameStateExtractor::Difficulty::DIFFICULTY_4,
-	                       "data/difficulty4_patch");
-     }},
-    {"difficulty5",
-     [](const InitialGameStateExtractor &e) {
-	     extractDifficulty(e, outputPath.get() + "/mods/base/difficulty5_patched",
-	                       InitialGameStateExtractor::Difficulty::DIFFICULTY_5,
-	                       "data/difficulty5_patch");
+     [](const InitialGameStateExtractor &e)
+     {
+	     extractDifficulty(
+	         e, outputPath.get() + "/mods/base/data/submods/org.openapoc.base/difficulty4",
+	         InitialGameStateExtractor::Difficulty::DIFFICULTY_5, "data/difficulty4_patch");
      }},
     {"common_gamestate",
-     [](const InitialGameStateExtractor &e) {
+     [](const InitialGameStateExtractor &e)
+     {
 	     GameState s;
 	     e.extractCommon(s);
 	     s.loadGame("data/common_patch");
@@ -76,11 +90,20 @@ std::map<UString, std::function<void(const InitialGameStateExtractor &e)>> thing
 	     info.setID("org.openapoc.base");
 	     info.setStatePath("base_gamestate");
 	     info.setDataPath("data");
+	     info.setModLoadScript("scripts/org.openapoc.base/onload.lua");
+
+	     std::list<UString> languages;
+	     for (const auto &name : supported_languages)
+	     {
+		     languages.push_back(name);
+	     }
+	     info.setSupportedLanguage(languages);
 
 	     info.writeInfo(outputPath.get() + "/mods/base");
      }},
     {"city_bullet_sprites",
-     [](const InitialGameStateExtractor &e) {
+     [](const InitialGameStateExtractor &e)
+     {
 	     auto bullet_sprites = e.extractBulletSpritesCity();
 
 	     for (auto &sprite_pair : bullet_sprites)
@@ -90,7 +113,8 @@ std::map<UString, std::function<void(const InitialGameStateExtractor &e)>> thing
 	     }
      }},
     {"battle_bullet_sprites",
-     [](const InitialGameStateExtractor &e) {
+     [](const InitialGameStateExtractor &e)
+     {
 	     auto bullet_sprites = e.extractBulletSpritesBattle();
 
 	     for (auto &sprite_pair : bullet_sprites)
@@ -101,7 +125,8 @@ std::map<UString, std::function<void(const InitialGameStateExtractor &e)>> thing
 	     }
      }},
     {"unit_image_packs",
-     [](const InitialGameStateExtractor &e) {
+     [](const InitialGameStateExtractor &e)
+     {
 	     for (auto &imagePackStrings : e.unitImagePackPaths)
 	     {
 		     GameState s;
@@ -125,7 +150,8 @@ std::map<UString, std::function<void(const InitialGameStateExtractor &e)>> thing
 	     }
      }},
     {"item_image_packs",
-     [](const InitialGameStateExtractor &e) {
+     [](const InitialGameStateExtractor &e)
+     {
 	     int itemImagePacksCount = e.getItemImagePacksCount();
 	     for (int i = 0; i < itemImagePacksCount; i++)
 	     {
@@ -151,7 +177,8 @@ std::map<UString, std::function<void(const InitialGameStateExtractor &e)>> thing
 	     }
      }},
     {"unit_shadow_packs",
-     [](const InitialGameStateExtractor &e) {
+     [](const InitialGameStateExtractor &e)
+     {
 	     for (auto &imagePackStrings : e.unitShadowPackPaths)
 	     {
 		     GameState s;
@@ -175,7 +202,8 @@ std::map<UString, std::function<void(const InitialGameStateExtractor &e)>> thing
 	     }
      }},
     {"unit_animation_packs",
-     [](const InitialGameStateExtractor &e) {
+     [](const InitialGameStateExtractor &e)
+     {
 	     for (auto &animationPackStrings : e.unitAnimationPackPaths)
 	     {
 		     GameState s;
@@ -201,7 +229,8 @@ std::map<UString, std::function<void(const InitialGameStateExtractor &e)>> thing
      }},
 
     {"battle_map_tilesets",
-     [](const InitialGameStateExtractor &e) {
+     [](const InitialGameStateExtractor &e)
+     {
 	     for (auto &tileSetName : e.battleMapPaths)
 	     {
 		     // Some indices are empty?
@@ -226,7 +255,8 @@ std::map<UString, std::function<void(const InitialGameStateExtractor &e)>> thing
 	     }
      }},
     {"battle_map_sectors",
-     [](const InitialGameStateExtractor &e) {
+     [](const InitialGameStateExtractor &e)
+     {
 	     for (auto &mapName : e.battleMapPaths)
 	     {
 		     // Some indices are empty?
@@ -246,6 +276,9 @@ std::map<UString, std::function<void(const InitialGameStateExtractor &e)>> thing
 			     auto &sectorName = sectorPair.first;
 			     auto &sector = sectorPair.second;
 			     auto path = BattleMapSectorTiles::getMapSectorPath();
+
+			     sector->loadSector(s, "data/resource_patch/maps/" + sectorName);
+
 			     if (!sector->saveSector(path + "/" + sectorName, true))
 			     {
 				     LogError("Failed to save map sector \"%s\"", sectorName);
@@ -281,7 +314,7 @@ int main(int argc, char *argv[])
 	}
 	else
 	{
-		auto list = extractListString.split(",");
+		auto list = split(extractListString, ",");
 		for (auto &extractorName : list)
 		{
 			auto extractor = thingsToExtract.find(extractorName);
@@ -296,13 +329,11 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	TraceObj mainTrace("main");
 	Framework fw(UString(argv[0]), false);
 	InitialGameStateExtractor initialGameStateExtractor;
 	for (auto &ePair : extractorsToRun)
 	{
 		LogWarning("Running %s", ePair.first);
-		TraceObj exTrace(ePair.first);
 		ePair.second(initialGameStateExtractor);
 	}
 

@@ -82,7 +82,8 @@ FormPreview::FormPreview() : Stage()
 		l = lb->createChild<Label>(*idx, ui().getFont("smalfont"));
 		l->Name = l->getText();
 		l->BackgroundColour = {192, 80, 80, 0};
-		// lb->addItem( l );
+		l->Size.x = lb->Size.x;
+		l->Size.y = ui().getFont("smalfont")->getFontHeight();
 	}
 
 	propertyeditor = mksp<Form>();
@@ -145,6 +146,7 @@ void FormPreview::eventOccurred(Event *e)
 			if (currentSelected != nullptr)
 			{
 				currentSelected->BackgroundColour.a = 0;
+				currentSelected->setDirty();
 			}
 
 			currentSelected = std::dynamic_pointer_cast<Label>(e->forms().RaisedBy);

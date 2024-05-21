@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/state/city/research.h"
 #include "game/state/shared/equipment.h"
 #include "game/state/stateobject.h"
 #include "library/sp.h"
@@ -19,9 +20,8 @@ class DoodadType;
 class Organisation;
 class VAmmoType;
 
-class VEquipmentType : public StateObject
+class VEquipmentType : public StateObject<VEquipmentType>
 {
-	STATE_OBJECT(VEquipmentType)
   public:
 	VEquipmentType() = default;
 
@@ -40,6 +40,7 @@ class VEquipmentType : public StateObject
 	UString name;
 	int weight = 0;
 	int max_ammo = 0;
+	int burst = 1;
 	StateRef<VAmmoType> ammo_type;
 	sp<Image> equipscreen_sprite;
 	Vec2<int> equipscreen_size = {0, 0};
@@ -94,6 +95,8 @@ class VEquipmentType : public StateObject
 
 	// Score requirement
 	int scoreRequirement = 0;
+
+	ResearchDependency research_dependency;
 
 	int getRangeInTiles() const;
 	int getRangeInMetres() const;

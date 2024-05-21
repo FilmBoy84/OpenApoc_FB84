@@ -11,9 +11,8 @@ class Sample;
 class DoodadType;
 class GameState;
 
-class HazardType : public StateObject
+class HazardType : public StateObject<HazardType>
 {
-	STATE_OBJECT(HazardType)
   public:
 	StateRef<DoodadType> doodadType;
 	sp<Sample> sound;
@@ -35,9 +34,8 @@ class HazardType : public StateObject
 	int getLifetime(GameState &state);
 };
 
-class DamageModifier : public StateObject
+class DamageModifier : public StateObject<DamageModifier>
 {
-	STATE_OBJECT(DamageModifier)
   public:
 	// nothing?
 };
@@ -49,9 +47,8 @@ enum class DamageSource
 	Debuff
 };
 
-class DamageType : public StateObject
+class DamageType : public StateObject<DamageType>
 {
-	STATE_OBJECT(DamageType)
   public:
 	enum class BlockType
 	{
@@ -67,7 +64,8 @@ class DamageType : public StateObject
 		Smoke,
 		Fire,
 		Enzyme,
-		Brainsucker
+		Brainsucker,
+		Psionic
 	};
 
 	UString name;
@@ -87,9 +85,15 @@ class DamageType : public StateObject
 	StateRef<HazardType> hazardType;
 
 	// True if explosive damage should reduce with distance (gas deals full damage everywhere)
-	bool hasDamageDissipation() const { return blockType != BlockType::Gas; }
+	bool hasDamageDissipation() const
+	{
+		return blockType != BlockType::Gas && blockType != BlockType::Psionic;
+	}
 	// True if this damage type deals damage on initial impact
-	bool doesImpactDamage() const { return blockType != BlockType::Gas; }
+	bool doesImpactDamage() const
+	{
+		return blockType != BlockType::Gas && blockType != BlockType::Psionic;
+	}
 	// True if this always impacts unit's head
 	bool alwaysImpactsHead() const { return blockType == BlockType::Gas; }
 	// True if this ignores armor value
@@ -98,12 +102,13 @@ class DamageType : public StateObject
 	bool dealsArmorDamage() const
 	{
 		return effectType != EffectType::Stun && effectType != EffectType::Smoke &&
-		       effectType != EffectType::Fire;
+		       effectType != EffectType::Fire && effectType != EffectType::Psionic;
 	}
 	// True if this damage type deals fatal wounds
 	bool dealsFatalWounds() const
 	{
-		return effectType != EffectType::Stun && effectType != EffectType::Smoke;
+		return effectType != EffectType::Stun && effectType != EffectType::Smoke &&
+		       effectType != EffectType::Psionic;
 	}
 	// True if this deals stun damage instead of health damage
 	bool dealsStunDamage() const

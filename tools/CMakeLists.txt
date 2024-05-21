@@ -8,7 +8,7 @@ option(BUILD_EDITOR "Build the gamestate editor tool" OFF)
 option(BUILD_DUMPEVERYTHING "Tool that dumps all known images" OFF)
 option(BUILD_SERIALIZATIONTOOL "Tool to work with serialized gamestate
 archives" ON)
-option(BUILD_LAUNCHER "Build the launcher" ON)
+
 
 if(BUILD_EXTRACTOR)
 		add_subdirectory(extractors)

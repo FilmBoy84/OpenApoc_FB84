@@ -1,5 +1,6 @@
 #include "game/state/luagamestate.h"
 #include "framework/configfile.h"
+#include "framework/framework.h"
 #include "framework/luaframework.h"
 #include "game/state/gamestate.h"
 #include "game/state/luagamestate_support.h"
@@ -32,9 +33,40 @@ bool LuaGameState::pushHook(const char *hookName)
 	}
 }
 
+static int dofileReplace(lua_State *L)
+{
+	const char *filename = lua_tostring(L, -1);
+	UString scriptPath = filename;
+	LogInfo("Running script \"%s\"", scriptPath);
+	const auto scriptFile = fw().data->fs.open(scriptPath);
+	if (!scriptFile)
+	{
+		LogWarning("Failed to open script \"%s\"", scriptPath);
+		return false;
+	}
+
+	const auto &fullPath = scriptFile.systemPath();
+	LogInfo("Loading script from \"%s\"", fullPath);
+
+	bool ret = true;
+	pushLuaDebugTraceback(L);
+	// this is only true if loadfile or pcall raised an error
+	if (luaL_loadfile(L, fullPath.c_str()) || lua_pcall(L, 0, 0, -2))
+	{
+		handleLuaError(L);
+		LogWarning("Script \"%s\" failed", scriptPath);
+		ret = false;
+	}
+	lua_pop(L, 1); // pop debug.traceback function
+	LogInfo("Script run %s", ret ? "success" : "fail");
+	return lua_gettop(L) - 1;
+}
+
 void LuaGameState::init(GameState &game)
 {
 	luaL_openlibs(L);
+
+	lua_register(L, "dofile", dofileReplace);
 
 	lua_createtable(L, 0, 3);
 
@@ -62,15 +94,15 @@ void LuaGameState::init(GameState &game)
 	lua_setfield(L, LUA_REGISTRYINDEX, "OpenApoc.GameState");
 
 	pushLuaDebugTraceback(L);
-	for (const UString &s : config().getString("OpenApoc.Mod.ScriptsList").split(";"))
+	for (const UString &s : split(config().getString("OpenApoc.Mod.ScriptsList"), ";"))
 	{
 		if (s.empty())
-			continue;
-
-		// this is only true if loadfile or pcall raised an error
-		if (luaL_loadfile(L, s.cStr()) || lua_pcall(L, 0, 0, -2))
 		{
-			handleLuaError(L);
+			continue;
+		}
+		if (!runScript(s))
+		{
+			LogError("Failed to load init script \"%s\"", s);
 		}
 	}
 	lua_pop(L, 1); // pop debug.traceback function
@@ -83,7 +115,7 @@ LuaGameState::operator bool() const { return this->L != nullptr && this->initOk;
 int LuaGameState::callHook(const UString &hookName, int nresults, int nargs)
 {
 	pushLuaDebugTraceback(L);
-	if (pushHook(hookName.str().c_str()))
+	if (pushHook(hookName.c_str()))
 	{
 		// rotate the stack so the arguments are at the top and the
 		// debug.traceback and hook functions are at the bottom
@@ -101,6 +133,33 @@ int LuaGameState::callHook(const UString &hookName, int nresults, int nargs)
 	lua_remove(L, -1 - nresults);
 	// return number of results in the stack
 	return nresults;
+}
+
+bool LuaGameState::runScript(const UString &scriptPath)
+{
+	LogInfo("Running script \"%s\"", scriptPath);
+	auto scriptFile = fw().data->fs.open(scriptPath);
+	if (!scriptFile)
+	{
+		LogWarning("Failed to open script \"%s\"", scriptPath);
+		return false;
+	}
+
+	const auto &fullPath = scriptFile.systemPath();
+	LogInfo("Loading script from \"%s\"", fullPath);
+
+	bool ret = true;
+	pushLuaDebugTraceback(L);
+	// this is only true if loadfile or pcall raised an error
+	if (luaL_loadfile(L, fullPath.c_str()) || lua_pcall(L, 0, 0, -2))
+	{
+		handleLuaError(L);
+		LogWarning("Script \"%s\" failed", scriptPath);
+		ret = false;
+	}
+	lua_pop(L, 1); // pop debug.traceback function
+	LogInfo("Script run %s", ret ? "success" : "fail");
+	return ret;
 }
 
 } // namespace OpenApoc

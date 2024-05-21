@@ -109,7 +109,7 @@ class BattleView : public BattleTileView
 	};
 	const Colour ammoColour = {158, 24, 12};
 
-	sp<Form> activeTab, mainTab, psiTab, primingTab, notMyTurnTab, baseForm;
+	sp<Form> activeTab, mainTab, psiTab, primingTab, notMyTurnTab, baseForm, debugOverlay;
 	sp<BattleTurnBasedConfirmBox> executePlanPopup;
 	std::vector<sp<Form>> uiTabsRT;
 	std::vector<sp<Form>> uiTabsTB;
@@ -233,12 +233,14 @@ class BattleView : public BattleTileView
 	BattleView(sp<GameState> gameState);
 	~BattleView() override;
 	void begin() override;
+	void refresh();
 	void resume() override;
 	void update() override;
 	void render() override;
 	void finish() override;
 	void eventOccurred(Event *e) override;
 	bool handleKeyDown(Event *e);
+	void handleMouseScroll(Event *e);
 	bool handleKeyUp(Event *e);
 	bool handleMouseDown(Event *e);
 	bool handleGameStateEvent(Event *e);

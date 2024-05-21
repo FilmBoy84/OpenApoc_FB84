@@ -13,7 +13,6 @@
 #include "framework/options.h"
 #include "framework/palette.h"
 #include "framework/sampleloader_interface.h"
-#include "framework/trace.h"
 #include "framework/video.h"
 #include "library/sp.h"
 #include "library/strings.h"
@@ -155,6 +154,7 @@ DataImpl::DataImpl(std::vector<UString> paths) : Data(paths)
 	}
 
 	registeredMusicLoaders["raw"].reset(getRAWMusicLoaderFactory());
+	registeredMusicLoaders["vorbis"].reset(getVorbisMusicLoaderFactory());
 	for (auto &musicLoader : registeredMusicLoaders)
 	{
 		auto t = musicLoader.first;
@@ -197,7 +197,7 @@ sp<VoxelSlice> DataImpl::loadVoxelSlice(const UString &path)
 	sp<VoxelSlice> slice;
 	if (path.substr(0, 9) == "LOFTEMPS:")
 	{
-		auto splitString = path.split(':');
+		auto splitString = split(path, ":");
 		// "LOFTEMPS:DATFILE:TABFILE:INDEX"
 		//  or
 		// "LOFTEMPS:DATFILE:TABFILE:INDEX:X:Y"
@@ -208,11 +208,10 @@ sp<VoxelSlice> DataImpl::loadVoxelSlice(const UString &path)
 		}
 		// Cut off the index to get the LOFTemps file
 		UString cacheKey = splitString[0] + splitString[1] + splitString[2];
-		cacheKey = cacheKey.toUpper();
+		cacheKey = to_upper(cacheKey);
 		sp<LOFTemps> lofTemps = this->LOFVoxelCache[cacheKey].lock();
 		if (!lofTemps)
 		{
-			TRACE_FN_ARGS1("path", path);
 			auto datFile = this->fs.open(splitString[1]);
 			if (!datFile)
 			{
@@ -280,18 +279,17 @@ sp<ImageSet> DataImpl::loadImageSet(const UString &path)
 		return this->loadImageSet(alias->second);
 	}
 
-	UString cacheKey = path.toUpper();
+	UString cacheKey = to_upper(path);
 	sp<ImageSet> imgSet = this->imageSetCache[cacheKey].lock();
 	if (imgSet)
 	{
 		return imgSet;
 	}
-	TRACE_FN_ARGS1("path", path);
 	// Raw resources come in the format:
 	//"RAW:PATH:WIDTH:HEIGHT[:optional/ignored]"
 	if (path.substr(0, 4) == "RAW:")
 	{
-		auto splitString = path.split(':');
+		auto splitString = split(path, ":");
 		imgSet = RawImage::loadSet(
 		    *this, splitString[1],
 		    Vec2<int>{Strings::toInteger(splitString[2]), Strings::toInteger(splitString[3])});
@@ -300,17 +298,17 @@ sp<ImageSet> DataImpl::loadImageSet(const UString &path)
 	//"PCK:PCKFILE:TABFILE[:optional/ignored]"
 	else if (path.substr(0, 4) == "PCK:")
 	{
-		auto splitString = path.split(':');
+		auto splitString = split(path, ":");
 		imgSet = PCKLoader::load(*this, splitString[1], splitString[2]);
 	}
 	else if (path.substr(0, 9) == "PCKSTRAT:")
 	{
-		auto splitString = path.split(':');
+		auto splitString = split(path, ":");
 		imgSet = PCKLoader::loadStrat(*this, splitString[1], splitString[2]);
 	}
 	else if (path.substr(0, 10) == "PCKSHADOW:")
 	{
-		auto splitString = path.split(':');
+		auto splitString = split(path, ":");
 		imgSet = PCKLoader::loadShadow(*this, splitString[1], splitString[2]);
 	}
 	else
@@ -338,12 +336,11 @@ sp<Sample> DataImpl::loadSample(UString path)
 		return this->loadSample(alias->second);
 	}
 
-	UString cacheKey = path.toUpper();
+	UString cacheKey = to_upper(path);
 	sp<Sample> sample = this->sampleCache[cacheKey].lock();
 	if (sample)
 		return sample;
 
-	TRACE_FN_ARGS1("path", path);
 	for (auto &loader : this->sampleLoaders)
 	{
 		sample = loader->loadSample(path);
@@ -363,7 +360,6 @@ sp<Sample> DataImpl::loadSample(UString path)
 sp<MusicTrack> DataImpl::loadMusic(const UString &path)
 {
 	std::lock_guard<std::recursive_mutex> l(this->musicCacheLock);
-	TRACE_FN_ARGS1("path", path);
 	auto alias = this->musicAliases.find(path);
 	if (alias != this->musicAliases.end())
 	{
@@ -401,7 +397,7 @@ sp<Image> DataImpl::loadImage(const UString &path, bool lazy)
 	}
 
 	// Use an uppercase version of the path for the cache key
-	UString cacheKey = path.toUpper();
+	UString cacheKey = to_upper(path);
 	sp<Image> img;
 	// Don't cache lazy loading image wrappers, the image data when really loaded will go through
 	// the cache as normal, but we don't want to think we've loaded an image when it's just a lazy
@@ -416,7 +412,6 @@ sp<Image> DataImpl::loadImage(const UString &path, bool lazy)
 	}
 
 	// Only trace stuff that misses the cache
-	TRACE_FN_ARGS1("path", path);
 
 	if (lazy)
 	{
@@ -424,7 +419,7 @@ sp<Image> DataImpl::loadImage(const UString &path, bool lazy)
 	}
 	else if (path.substr(0, 4) == "RAW:")
 	{
-		auto splitString = path.split(':');
+		auto splitString = split(path, ":");
 		// Raw resources come in the format:
 		//"RAW:PATH:WIDTH:HEIGHT[:PALETTE]"
 		// or
@@ -463,7 +458,13 @@ sp<Image> DataImpl::loadImage(const UString &path, bool lazy)
 		}
 		if (splitString.size() > palettePos)
 		{
+			// The palette may be an Image, so call that without the lock
+			// If something else loads this same image in the meantime, then we may have multiple
+			// entries in the ImageCache actually referring to the same on-disk image, but that's
+			// just an inefficiency rather than a failure
+			this->imageCacheLock.unlock();
 			auto pal = this->loadPalette(splitString[palettePos]);
+			this->imageCacheLock.lock();
 			if (!pal)
 			{
 				LogError("Failed to load palette for RAW image: \"%s\"", path);
@@ -478,7 +479,8 @@ sp<Image> DataImpl::loadImage(const UString &path, bool lazy)
 	}
 	else if (path.substr(0, 4) == "PCK:")
 	{
-		auto splitString = path.split(':');
+		auto splitString = split(path, ":");
+
 		if (splitString.size() != 3 && splitString.size() != 4 && splitString.size() != 5)
 		{
 			LogError("Invalid PCK resource string: \"%s\"", path);
@@ -511,7 +513,9 @@ sp<Image> DataImpl::loadImage(const UString &path, bool lazy)
 				if (!pImg)
 					return nullptr;
 				LogAssert(pImg);
+				this->imageCacheLock.unlock();
 				auto pal = this->loadPalette(splitString[4]);
+				this->imageCacheLock.lock();
 				LogAssert(pal);
 				img = pImg->toRGBImage(pal);
 				break;
@@ -523,7 +527,7 @@ sp<Image> DataImpl::loadImage(const UString &path, bool lazy)
 	}
 	else if (path.substr(0, 9) == "PCKSTRAT:")
 	{
-		auto splitString = path.split(':');
+		auto splitString = split(path, ":");
 		if (splitString.size() != 3 && splitString.size() != 4 && splitString.size() != 5)
 		{
 			LogError("Invalid PCKSTRAT resource string: \"%s\"", path);
@@ -551,7 +555,10 @@ sp<Image> DataImpl::loadImage(const UString &path, bool lazy)
 				sp<PaletteImage> pImg = std::dynamic_pointer_cast<PaletteImage>(this->loadImage(
 				    "PCKSTRAT:" + splitString[1] + ":" + splitString[2] + ":" + splitString[3]));
 				LogAssert(pImg);
+				this->imageCacheLock.unlock();
 				auto pal = this->loadPalette(splitString[4]);
+				this->imageCacheLock.lock();
+
 				LogAssert(pal);
 				img = pImg->toRGBImage(pal);
 				break;
@@ -563,7 +570,7 @@ sp<Image> DataImpl::loadImage(const UString &path, bool lazy)
 	}
 	else if (path.substr(0, 10) == "PCKSHADOW:")
 	{
-		auto splitString = path.split(':');
+		auto splitString = split(path, ":");
 		if (splitString.size() != 3 && splitString.size() != 4 && splitString.size() != 5)
 		{
 			LogError("Invalid PCKSHADOW resource string: \"%s\"", path);
@@ -591,7 +598,9 @@ sp<Image> DataImpl::loadImage(const UString &path, bool lazy)
 				sp<PaletteImage> pImg = std::dynamic_pointer_cast<PaletteImage>(this->loadImage(
 				    "PCKSHADOW:" + splitString[1] + ":" + splitString[2] + ":" + splitString[3]));
 				LogAssert(pImg);
+				this->imageCacheLock.unlock();
 				auto pal = this->loadPalette(splitString[4]);
+				this->imageCacheLock.lock();
 				LogAssert(pal);
 				img = pImg->toRGBImage(pal);
 				break;
@@ -679,7 +688,7 @@ sp<Palette> DataImpl::loadPalette(const UString &path)
 	}
 
 	// Use an uppercase version of the path for the cache key
-	UString cacheKey = path.toUpper();
+	UString cacheKey = to_upper(path);
 
 	auto pal = this->paletteCache[cacheKey].lock();
 	if (pal)
@@ -706,7 +715,9 @@ sp<Palette> DataImpl::loadPalette(const UString &path)
 		return pal;
 	}
 
+	this->paletteCacheLock.unlock();
 	sp<RGBImage> img = std::dynamic_pointer_cast<RGBImage>(this->loadImage(path));
+	this->paletteCacheLock.lock();
 	if (img)
 	{
 		unsigned int idx = 0;
@@ -746,7 +757,7 @@ sp<Video> DataImpl::loadVideo(const UString &path)
 
 	if (path.substr(0, 4) == "SMK:")
 	{
-		auto splitString = path.split(':');
+		auto splitString = split(path, ":");
 		if (splitString.size() != 2)
 		{
 			LogError("Invalid SMK string: \"%s\"", path);
@@ -766,7 +777,7 @@ sp<Video> DataImpl::loadVideo(const UString &path)
 
 bool DataImpl::writeImage(UString systemPath, sp<Image> image, sp<Palette> palette)
 {
-	auto outPath = fs::path(systemPath.str());
+	auto outPath = fs::path(systemPath);
 	auto outDir = outPath.parent_path();
 	if (!outDir.empty())
 	{
@@ -788,7 +799,7 @@ bool DataImpl::writeImage(UString systemPath, sp<Image> image, sp<Palette> palet
 			return false;
 		}
 	}
-	std::ofstream outFile(systemPath.str(), std::ios::binary);
+	std::ofstream outFile(systemPath, std::ios::binary);
 	if (!outFile)
 	{
 		LogWarning("Failed to open \"%s\" for writing", systemPath);

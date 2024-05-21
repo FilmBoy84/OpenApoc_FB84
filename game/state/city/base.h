@@ -16,9 +16,8 @@ class Facility;
 class GameState;
 class Organisation;
 
-class Base : public StateObject, public std::enable_shared_from_this<Base>
+class Base : public StateObject<Base>, public std::enable_shared_from_this<Base>
 {
-	STATE_OBJECT(Base)
   public:
 	std::vector<std::vector<bool>> corridors;
 	std::vector<sp<Facility>> facilities;
@@ -56,10 +55,11 @@ class Base : public StateObject, public std::enable_shared_from_this<Base>
 	                   bool free = false);
 	BuildError canDestroyFacility(GameState &state, Vec2<int> pos) const;
 	void destroyFacility(GameState &state, Vec2<int> pos);
+	bool containmentEmpty(GameState &state);
 	int getCapacityUsed(GameState &state, FacilityType::Capacity type) const;
 	int getCapacityTotal(FacilityType::Capacity type) const;
-	int getUsage(GameState &state, sp<Facility> facility, int delta = 0) const;
-	int getUsage(GameState &state, FacilityType::Capacity type, int delta = 0) const;
+	float getUsage(GameState &state, const sp<Facility> facility, const int delta = 0) const;
+	float getUsage(GameState &state, const FacilityType::Capacity type, const int delta = 0) const;
 };
 
 }; // namespace OpenApoc

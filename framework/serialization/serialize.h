@@ -28,6 +28,8 @@ class SerializationNode
 
 	virtual UString getName() = 0;
 	virtual void setName(const UString &str) = 0;
+	virtual UString getAttribute(const UString &attribute) = 0;
+	virtual void setAttribute(const UString &attribute, const UString &value) = 0;
 	virtual UString getValue() = 0;
 	virtual void setValue(const UString &str) = 0;
 
@@ -78,7 +80,7 @@ class SerializationException : public std::runtime_error
 {
   public:
 	SerializationException(const UString &description, SerializationNode *node)
-	    : std::runtime_error(UString(description + " " + node->getFullPath()).cStr())
+	    : std::runtime_error(UString(description + " " + node->getFullPath()).c_str())
 	{
 	}
 };

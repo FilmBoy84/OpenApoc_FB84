@@ -25,24 +25,19 @@ class Vehicle;
 class Tile;
 class TileMap;
 class Building;
-class UString;
 class City;
 
 class FlyingVehicleTileHelper : public CanEnterTileHelper
 {
   private:
 	TileMap &map;
-	VehicleType::Type type;
-	bool crashed;
+	const Vehicle &v;
 	Vec2<int> size;
 	bool large;
 	int altitude;
 
   public:
-	FlyingVehicleTileHelper(TileMap &map, Vehicle &v);
-	FlyingVehicleTileHelper(TileMap &map, VehicleType &vehType, bool crashed, int altitude);
-	FlyingVehicleTileHelper(TileMap &map, VehicleType::Type type, bool crashed, Vec2<int> size,
-	                        int altitude);
+	FlyingVehicleTileHelper(TileMap &map, const Vehicle &v);
 
 	bool canEnterTile(Tile *from, Tile *to, bool ignoreStaticUnits = false,
 	                  bool ignoreMovingUnits = true, bool ignoreAllUnits = false) const override;
@@ -74,11 +69,10 @@ class GroundVehicleTileHelper : public CanEnterTileHelper
   private:
 	TileMap &map;
 	VehicleType::Type type;
-	bool crashed;
 
   public:
 	GroundVehicleTileHelper(TileMap &map, Vehicle &v);
-	GroundVehicleTileHelper(TileMap &map, VehicleType::Type type, bool crashed);
+	GroundVehicleTileHelper(TileMap &map, VehicleType::Type type);
 
 	bool canEnterTile(Tile *from, Tile *to, bool ignoreStaticUnits = false,
 	                  bool ignoreMovingUnits = true, bool ignoreAllUnits = false) const override;
@@ -111,6 +105,8 @@ class VehicleTargetHelper
 		Reachable,
 		BlockedByVehicle, // We only check for this if VehicleAvoidance is not Ignore.
 		BlockedByScenery,
+		BlockedByBuilding // Specificaly so AI can recover vehicle at any position of the map which
+		                  // is not inside a building
 	};
 
 	// Desired target adjustment behavior when the given target tile is BlockedByVehicle.
@@ -143,21 +139,37 @@ class VehicleTargetHelper
 	                                                const VehicleAvoidance vehicleAvoidance,
 	                                                bool adjustForFlying);
 
+	// Checks reachability of the target location for the given vehicle.
+	// Args:
+	//   vehicle: Vehicle, only used for looking up the type.
+	//   target: Location to be checked for reachability.
+	// Returns: Reachability, see above for details.
+	static Reachability isReachableTarget(const Vehicle &v, Vec3<int> target);
+
+	// Checks for reachability to recover AI vehicles, specificaly as seperate function since Target
+	// Tile is will always be blocked by vehicle to be rescued and mostly has no landing pad Returns
+	// reachable for recovery as long as tgt tile is not part of building
+	static Reachability isReachableForRecovery(const Vehicle &v, Vec3<int> target);
+
   private:
 	static AdjustTargetResult adjustTargetToClosestFlying(GameState &state, Vehicle &v,
 	                                                      Vec3<int> &target,
 	                                                      const VehicleAvoidance vehicleAvoidance);
 	static AdjustTargetResult adjustTargetToClosestRoad(Vehicle &v, Vec3<int> &target);
 	static AdjustTargetResult adjustTargetToClosestGround(Vehicle &v, Vec3<int> &target);
+
+	static Reachability isReachableTargetFlying(const Vehicle &v, Vec3<int> target);
+	static Reachability isReachableTargetRoad(const Vehicle &v, Vec3<int> target);
+	static Reachability isReachableTargetGround(const Vehicle &v, Vec3<int> target);
 };
 
 class VehicleMission
 {
   private:
 	// INTERNAL: Not to be used directly (Only works when in building)
-	static VehicleMission *takeOff(Vehicle &v);
+	static VehicleMission takeOff(Vehicle &v);
 	// INTERNAL: Not to be used directly (Only works if directly above a pad)
-	static VehicleMission *land(Vehicle &v, StateRef<Building> b);
+	static VehicleMission land(Vehicle &v, StateRef<Building> b);
 	// INTERNAL: This checks if mission is actually finished. Called by isFinished.
 	// If it is finished, update() is called by isFinished so that any remaining work could be done
 	bool isFinishedInternal(GameState &state, Vehicle &v);
@@ -185,42 +197,43 @@ class VehicleMission
 	bool acquireTargetBuilding(GameState &state, Vehicle &v);
 	void updateTimer(unsigned ticks);
 	void takePositionNearPortal(GameState &state, Vehicle &v);
+	static bool canRecoverVehicle(const GameState &state, const Vehicle &v, const Vehicle &target);
 
 	// Methods to create new missions
 
-	static VehicleMission *gotoLocation(GameState &state, Vehicle &v, Vec3<int> target,
-	                                    bool allowTeleporter = false, bool pickNearest = false,
-	                                    int attemptsToGiveUpAfter = 20);
-	static VehicleMission *gotoPortal(GameState &state, Vehicle &v);
-	static VehicleMission *gotoPortal(GameState &state, Vehicle &v, Vec3<int> target);
-	static VehicleMission *departToSpace(GameState &state, Vehicle &v);
+	static VehicleMission gotoLocation(GameState &state, Vehicle &v, Vec3<int> target,
+	                                   bool allowTeleporter = false, bool pickNearest = false,
+	                                   int attemptsToGiveUpAfter = 20);
+	static VehicleMission gotoPortal(GameState &state, Vehicle &v);
+	static VehicleMission gotoPortal(GameState &state, Vehicle &v, Vec3<int> target);
+	static VehicleMission departToSpace(GameState &state, Vehicle &v);
 	// With now building goes home
-	static VehicleMission *gotoBuilding(GameState &state, Vehicle &v,
-	                                    StateRef<Building> target = nullptr,
-	                                    bool allowTeleporter = false);
-	static VehicleMission *infiltrateOrSubvertBuilding(GameState &state, Vehicle &v,
-	                                                   bool subvert = false,
-	                                                   StateRef<Building> target = nullptr);
-	static VehicleMission *attackVehicle(GameState &state, Vehicle &v, StateRef<Vehicle> target);
-	static VehicleMission *attackBuilding(GameState &state, Vehicle &v,
-	                                      StateRef<Building> target = nullptr);
-	static VehicleMission *followVehicle(GameState &state, Vehicle &v, StateRef<Vehicle> target);
-	static VehicleMission *followVehicle(GameState &state, Vehicle &v,
-	                                     std::list<StateRef<Vehicle>> &targets);
-	static VehicleMission *recoverVehicle(GameState &state, Vehicle &v, StateRef<Vehicle> target);
-	static VehicleMission *offerService(GameState &state, Vehicle &v,
-	                                    StateRef<Building> target = nullptr);
-	static VehicleMission *snooze(GameState &state, Vehicle &v, unsigned int ticks);
-	static VehicleMission *selfDestruct(GameState &state, Vehicle &v);
-	static VehicleMission *arriveFromDimensionGate(GameState &state, Vehicle &v, int ticks = 0);
-	static VehicleMission *restartNextMission(GameState &state, Vehicle &v);
-	static VehicleMission *crashLand(GameState &state, Vehicle &v);
-	static VehicleMission *patrol(GameState &state, Vehicle &v, bool home = false,
-	                              unsigned int counter = 10);
-	static VehicleMission *teleport(GameState &state, Vehicle &v, Vec3<int> target = {-1, -1, -1});
-	static VehicleMission *investigateBuilding(GameState &state, Vehicle &v,
-	                                           StateRef<Building> target,
-	                                           bool allowTeleporter = false);
+	static VehicleMission gotoBuilding(GameState &state, Vehicle &v,
+	                                   StateRef<Building> target = nullptr,
+	                                   bool allowTeleporter = false);
+	static VehicleMission infiltrateOrSubvertBuilding(GameState &state, Vehicle &v,
+	                                                  bool subvert = false,
+	                                                  StateRef<Building> target = nullptr);
+	static VehicleMission attackVehicle(GameState &state, Vehicle &v, StateRef<Vehicle> target);
+	static VehicleMission attackBuilding(GameState &state, Vehicle &v,
+	                                     StateRef<Building> target = nullptr);
+	static VehicleMission followVehicle(GameState &state, Vehicle &v, StateRef<Vehicle> target);
+	static VehicleMission followVehicle(GameState &state, Vehicle &v,
+	                                    std::list<StateRef<Vehicle>> &targets);
+	static VehicleMission recoverVehicle(GameState &state, Vehicle &v, StateRef<Vehicle> target);
+	static VehicleMission offerService(GameState &state, Vehicle &v,
+	                                   StateRef<Building> target = nullptr);
+	static VehicleMission snooze(GameState &state, Vehicle &v, unsigned int ticks);
+	static VehicleMission selfDestruct(GameState &state, Vehicle &v);
+	static VehicleMission arriveFromDimensionGate(GameState &state, Vehicle &v, int ticks = 0);
+	static VehicleMission restartNextMission(GameState &state, Vehicle &v);
+	static VehicleMission crashLand(GameState &state, Vehicle &v);
+	static VehicleMission patrol(GameState &state, Vehicle &v, bool home = false,
+	                             unsigned int counter = 10);
+	static VehicleMission teleport(GameState &state, Vehicle &v, Vec3<int> target = {-1, -1, -1});
+	static VehicleMission investigateBuilding(GameState &state, Vehicle &v,
+	                                          StateRef<Building> target,
+	                                          bool allowTeleporter = false);
 	UString getName();
 
 	enum class MissionType

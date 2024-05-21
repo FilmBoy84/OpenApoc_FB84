@@ -44,6 +44,11 @@
 #define DT_EXPLOSIVE 4
 #define DT_STUNGUN 5
 #define DT_PSIBLAST 6
+#define DT_LASER 8
+#define DT_PLASMA 9
+#define DT_TOXINA 10
+#define DT_TOXINB 11
+#define DT_TOXINC 12
 #define DT_DISRUPTOR 14
 #define DT_EXPLOSIVE2 15
 #define DT_BRAINSUCKER 18
@@ -324,6 +329,11 @@ void InitialGameStateExtractor::extractAgentEquipment(GameState &state) const
 			case DT_EXPLOSIVE2:
 				d->explosive = true;
 				break;
+			case DT_LASER:
+			case DT_PLASMA:
+			case DT_TOXINA:
+			case DT_TOXINB:
+			case DT_TOXINC:
 			case DT_DISRUPTOR:
 				d->non_violent = true;
 				break;
@@ -477,7 +487,7 @@ void InitialGameStateExtractor::extractAgentEquipment(GameState &state) const
 		}
 
 		// Mark brainsucker launcher
-		if (edata.sprite_idx == 44)
+		if (edata.sprite_idx == IT_BRAINSUCKERLAUNCHER)
 		{
 			e->launcher = true;
 		}
@@ -731,7 +741,18 @@ void InitialGameStateExtractor::extractAgentEquipment(GameState &state) const
 
 		e->manufacturer = {&state, data_u.getOrgId(edata.manufacturer)};
 
-		e->store_space = edata.store_space;
+		switch (edata.sprite_idx)
+		{
+			// Fix store space for brainsucker pod
+			// It is set as 16 from edata when it should be 1
+			case IT_BRAINSUCKERPOD:
+				e->store_space = 1;
+				break;
+			default:
+				e->store_space = edata.store_space;
+				break;
+		}
+
 		e->armor = edata.armor;
 		e->score = edata.score;
 

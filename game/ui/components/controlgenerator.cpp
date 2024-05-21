@@ -86,7 +86,7 @@ void ControlGenerator::init(GameState &state [[maybe_unused]])
 	for (int i = 47; i <= 50; i++)
 	{
 		icons.push_back(fw().data->loadImage(format(
-		    "PCK:xcom3/ufodata/vs_icon.pck:xcom3/ufodata/vs_icon.tab:%s:xcom3/ufodata/pal_01.dat",
+		    "PCK:xcom3/ufodata/vs_icon.pck:xcom3/ufodata/vs_icon.tab:%d:xcom3/ufodata/pal_01.dat",
 		    i)));
 	}
 
@@ -94,7 +94,7 @@ void ControlGenerator::init(GameState &state [[maybe_unused]])
 	for (int i = 51; i <= 63; i++)
 	{
 		vehiclePassengerCountIcons.push_back(fw().data->loadImage(format(
-		    "PCK:xcom3/ufodata/vs_icon.pck:xcom3/ufodata/vs_icon.tab:%s:xcom3/ufodata/pal_01.dat",
+		    "PCK:xcom3/ufodata/vs_icon.pck:xcom3/ufodata/vs_icon.tab:%d:xcom3/ufodata/pal_01.dat",
 		    i)));
 	}
 	labelFont = ui().getFont("smalfont");
@@ -118,11 +118,21 @@ VehicleTileInfo ControlGenerator::createVehicleInfo(GameState &state, sp<Vehicle
 	t.vehicle = v;
 	t.selected = UnitSelectionState::Unselected;
 
-	for (auto &veh : state.current_city->cityViewSelectedVehicles)
+	for (auto &veh : state.current_city->cityViewSelectedOwnedVehicles)
 	{
 		if (veh == v)
 		{
-			t.selected = (veh == state.current_city->cityViewSelectedVehicles.front())
+			t.selected = (veh == state.current_city->cityViewSelectedOwnedVehicles.front())
+			                 ? UnitSelectionState::FirstSelected
+			                 : UnitSelectionState::Selected;
+			break;
+		}
+	}
+	for (auto &veh : state.current_city->cityViewSelectedOtherVehicles)
+	{
+		if (veh == v)
+		{
+			t.selected = (veh == state.current_city->cityViewSelectedOtherVehicles.front())
 			                 ? UnitSelectionState::FirstSelected
 			                 : UnitSelectionState::Selected;
 			break;
@@ -149,6 +159,16 @@ VehicleTileInfo ControlGenerator::createVehicleInfo(GameState &state, sp<Vehicle
 	t.passengers = std::min(13, v->getPassengers());
 	// Faded if in other dimension or if haven't left dimension gate yet
 	t.faded = v->city != state.current_city || (!v->tileObject && !v->currentBuilding);
+	// Headed home if we have a mission and it's to our home building
+	if (!v->missions.empty())
+	{
+		t.headedHome = v->missions.back().targetBuilding == v->homeBuilding ||
+		               v->missions.back().type == VehicleMission::MissionType::OfferService;
+	}
+	else
+	{
+		t.headedHome = false;
+	}
 
 	auto b = v->currentBuilding;
 	if (b)
@@ -183,7 +203,6 @@ sp<Control> ControlGenerator::createVehicleControl(GameState &state, const Vehic
 	baseControl->Size.x -= 1;
 	baseControl->Name = "OWNED_VEHICLE_FRAME_" + info.vehicle->name;
 	baseControl->setData(info.vehicle);
-	baseControl->ToolTipText = info.vehicle->name;
 
 	auto vehicleIcon = baseControl->createChild<Graphic>(info.vehicle->type->icon);
 	if (vehicleIcon->getImage())
@@ -226,6 +245,7 @@ sp<Control> ControlGenerator::createVehicleControl(GameState &state, const Vehic
 	}
 	stateGraphic->Location = {0, 0};
 	stateGraphic->Name = "OWNED_VEHICLE_STATE_" + info.vehicle->name;
+	stateGraphic->ToolTipText = info.vehicle->name;
 
 	if (info.faded)
 	{
@@ -240,6 +260,23 @@ sp<Control> ControlGenerator::createVehicleControl(GameState &state, const Vehic
 		}
 		fadeIcon->Location = {1, 1};
 	}
+
+	sp<Graphic> baseGraphic;
+
+	if (info.headedHome)
+	{
+		baseGraphic = baseControl->createChild<Graphic>(singleton.icons[0]);
+		if (baseGraphic->getImage())
+		{
+			baseGraphic->Size = baseGraphic->getImage()->size;
+		}
+		else
+		{
+			baseGraphic->AutoSize = true;
+		}
+		baseGraphic->Location = {-5, 0};
+	}
+
 	if (info.passengers)
 	{
 		auto passengerGraphic = vehicleIcon->createChild<Graphic>(
@@ -252,7 +289,7 @@ sp<Control> ControlGenerator::createVehicleControl(GameState &state, const Vehic
 		{
 			passengerGraphic->AutoSize = true;
 		}
-		passengerGraphic->Location = {0, 0};
+		passengerGraphic->Location = {-1, 0};
 		passengerGraphic->Name = "OWNED_VEHICLE_PASSENGERS_" + info.vehicle->name;
 	}
 
@@ -408,11 +445,41 @@ AgentInfo ControlGenerator::createAgentInfo(GameState &state, sp<Agent> a,
 		// Select according to city state
 		else
 		{
-			for (auto &ag : state.current_city->cityViewSelectedAgents)
+			for (auto &ag : state.current_city->cityViewSelectedSoldiers)
 			{
 				if (ag == a)
 				{
-					i.selected = (ag == state.current_city->cityViewSelectedAgents.front())
+					i.selected = (ag == state.current_city->cityViewSelectedSoldiers.front())
+					                 ? UnitSelectionState::FirstSelected
+					                 : UnitSelectionState::Selected;
+					break;
+				}
+			}
+			for (auto &ag : state.current_city->cityViewSelectedBios)
+			{
+				if (ag == a)
+				{
+					i.selected = (ag == state.current_city->cityViewSelectedBios.front())
+					                 ? UnitSelectionState::FirstSelected
+					                 : UnitSelectionState::Selected;
+					break;
+				}
+			}
+			for (auto &ag : state.current_city->cityViewSelectedPhysics)
+			{
+				if (ag == a)
+				{
+					i.selected = (ag == state.current_city->cityViewSelectedPhysics.front())
+					                 ? UnitSelectionState::FirstSelected
+					                 : UnitSelectionState::Selected;
+					break;
+				}
+			}
+			for (auto &ag : state.current_city->cityViewSelectedEngineers)
+			{
+				if (ag == a)
+				{
+					i.selected = (ag == state.current_city->cityViewSelectedEngineers.front())
 					                 ? UnitSelectionState::FirstSelected
 					                 : UnitSelectionState::Selected;
 					break;
@@ -432,15 +499,16 @@ AgentInfo ControlGenerator::createAgentInfo(GameState &state, sp<Agent> a,
 	i.shield = a->getMaxShield(state) > 0;
 	float maxHealth;
 	float currentHealth;
+
+	currentHealth = a->getHealth();
+	maxHealth = a->getMaxHealth();
 	if (i.shield)
 	{
-		currentHealth = a->getShield(state);
-		maxHealth = a->getMaxShield(state);
-	}
-	else
-	{
-		currentHealth = a->getHealth();
-		maxHealth = a->getMaxHealth();
+		if (currentHealth == maxHealth || state.current_battle)
+		{
+			currentHealth = a->getShield(state);
+			maxHealth = a->getMaxShield(state);
+		}
 	}
 	i.healthProportion = maxHealth == 0.0f ? 0.0f : currentHealth / maxHealth;
 	// Set state that is used in battle
@@ -534,7 +602,7 @@ sp<Control> ControlGenerator::createLargeAgentControl(GameState &state, const Ag
 	if (skill != UnitSkillState::Hidden)
 	{
 		auto skillLabel = baseControl->createChild<Label>(
-		    format(tr("Skill %s"), info.agent->getSkill()), singleton.labelFont);
+		    format(tr("Skill %d"), info.agent->getSkill()), singleton.labelFont);
 		skillLabel->Tint = {192, 192, 192};
 
 		skillLabel->Size = {nameLabel->Size.x, singleton.labelFont->getFontHeight()};
@@ -542,7 +610,7 @@ sp<Control> ControlGenerator::createLargeAgentControl(GameState &state, const Ag
 
 		if (skill == UnitSkillState::Horizontal)
 		{
-			skillLabel->Size.x = 45;
+			skillLabel->Size = {45, singleton.labelFont->getFontHeight() * 2};
 			nameLabel->Size.x -= 50;
 			skillLabel->Location = {baseControl->Size.x - 45, 0};
 		}
@@ -594,16 +662,18 @@ sp<Control> ControlGenerator::createDoubleListControl(const int controlLength)
 {
 	auto rubberItem = mksp<Control>();
 	rubberItem->Size = Vec2<int>{controlLength, 1};
-	rubberItem->setFuncPreRender([](sp<Control> control) {
-		int sizeY = 1;
-		for (auto &c : control->Controls)
-		{
-			if (!c->isVisible())
-				continue;
-			sizeY = std::max(sizeY, c->Location.y + c->Size.y);
-		}
-		control->Size.y = sizeY;
-	});
+	rubberItem->setFuncPreRender(
+	    [](sp<Control> control)
+	    {
+		    int sizeY = 1;
+		    for (auto &c : control->Controls)
+		    {
+			    if (!c->isVisible())
+				    continue;
+			    sizeY = std::max(sizeY, c->Location.y + c->Size.y);
+		    }
+		    control->Size.y = sizeY;
+	    });
 
 	auto leftList = rubberItem->createChild<MultilistBox>();
 	leftList->Name = LEFT_LIST_NAME;
@@ -637,13 +707,13 @@ sp<Control> ControlGenerator::createOrganisationControl(GameState &state,
 	// FIXME: There's an extra 1 pixel here that's annoying
 	baseControl->Size.x -= 1;
 	baseControl->Name = "ORG_FRAME_" + info.organisation->name;
-	baseControl->ToolTipText = tr(info.organisation->name);
 	baseControl->setData(info.organisation);
 
-	auto vehicleIcon = baseControl->createChild<Graphic>(info.organisation->icon);
-	vehicleIcon->AutoSize = true;
-	vehicleIcon->Location = {1, 1};
-	vehicleIcon->Name = "ORG_ICON_" + info.organisation->name;
+	auto orgIcon = baseControl->createChild<Graphic>(info.organisation->icon);
+	orgIcon->AutoSize = true;
+	orgIcon->Location = {1, 1};
+	orgIcon->Name = "ORG_ICON_" + info.organisation->name;
+	orgIcon->ToolTipText = tr(info.organisation->name);
 
 	return baseControl;
 }
@@ -687,11 +757,11 @@ void ControlGenerator::fillAgentControl(GameState &state, sp<Graphic> baseContro
 	}
 	baseControl->setImage(singleton.battleSelect[(int)info.selected]);
 	baseControl->setData(info.agent);
-	baseControl->ToolTipText = info.agent->name;
 
 	auto unitIcon = baseControl->createChild<Graphic>(info.agent->getPortrait().icon);
 	unitIcon->AutoSize = true;
 	unitIcon->Location = {2, 1};
+	unitIcon->ToolTipText = info.agent->name;
 
 	if (info.useRank)
 	{
@@ -738,6 +808,7 @@ void ControlGenerator::fillAgentControl(GameState &state, sp<Graphic> baseContro
 		auto stateGraphic = baseControl->createChild<Graphic>(singleton.icons[(int)info.state]);
 		stateGraphic->AutoSize = true;
 		stateGraphic->Location = {0, 0};
+		stateGraphic->ToolTipText = info.agent->name;
 	}
 	if (config().getBool("OpenApoc.NewFeature.AdditionalUnitIcons"))
 	{
@@ -773,7 +844,7 @@ bool VehicleTileInfo::operator==(const VehicleTileInfo &other) const
 	return (this->vehicle == other.vehicle && this->selected == other.selected &&
 	        this->healthProportion == other.healthProportion && this->shield == other.shield &&
 	        this->passengers == other.passengers && this->state == other.state &&
-	        this->faded == other.faded);
+	        this->faded == other.faded && this->headedHome == other.headedHome);
 }
 
 bool VehicleTileInfo::operator!=(const VehicleTileInfo &other) const { return !(*this == other); }

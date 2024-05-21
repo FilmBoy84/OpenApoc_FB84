@@ -150,7 +150,8 @@ bool ProjectDependencies::satisfied(StateRef<Base> base) const
 	return true;
 }
 
-sp<ResearchTopic> ResearchTopic::get(const GameState &state, const UString &id)
+template <>
+sp<ResearchTopic> StateObject<ResearchTopic>::get(const GameState &state, const UString &id)
 {
 	auto it = state.research.topics.find(id);
 	if (it == state.research.topics.end())
@@ -160,19 +161,20 @@ sp<ResearchTopic> ResearchTopic::get(const GameState &state, const UString &id)
 	}
 	return it->second;
 }
-
-const UString &ResearchTopic::getPrefix()
+template <> const UString &StateObject<ResearchTopic>::getPrefix()
 {
 	static UString prefix = "RESEARCH_";
 	return prefix;
 }
-const UString &ResearchTopic::getTypeName()
+template <> const UString &StateObject<ResearchTopic>::getTypeName()
 {
 	static UString name = "ResearchTopic";
 	return name;
 }
 
-const UString &ResearchTopic::getId(const GameState &state, const sp<ResearchTopic> ptr)
+template <>
+const UString &StateObject<ResearchTopic>::getId(const GameState &state,
+                                                 const sp<ResearchTopic> ptr)
 {
 	static const UString emptyString = "";
 	for (auto &r : state.research.topics)
@@ -180,11 +182,11 @@ const UString &ResearchTopic::getId(const GameState &state, const sp<ResearchTop
 		if (r.second == ptr)
 			return r.first;
 	}
-	LogError("No research matching pointer %p", ptr.get());
+	LogError("No research matching pointer %p", static_cast<void *>(ptr.get()));
 	return emptyString;
 }
 
-sp<Lab> Lab::get(const GameState &state, const UString &id)
+template <> sp<Lab> StateObject<Lab>::get(const GameState &state, const UString &id)
 {
 	auto it = state.research.labs.find(id);
 	if (it == state.research.labs.end())
@@ -195,18 +197,18 @@ sp<Lab> Lab::get(const GameState &state, const UString &id)
 	return it->second;
 }
 
-const UString &Lab::getPrefix()
+template <> const UString &StateObject<Lab>::getPrefix()
 {
 	static UString prefix = "LAB_";
 	return prefix;
 }
-const UString &Lab::getTypeName()
+template <> const UString &StateObject<Lab>::getTypeName()
 {
 	static UString name = "Lab";
 	return name;
 }
 
-const UString &Lab::getId(const GameState &state, const sp<Lab> ptr)
+template <> const UString &StateObject<Lab>::getId(const GameState &state, const sp<Lab> ptr)
 {
 	static const UString emptyString = "";
 	for (auto &l : state.research.labs)
@@ -214,7 +216,7 @@ const UString &Lab::getId(const GameState &state, const sp<Lab> ptr)
 		if (l.second == ptr)
 			return l.first;
 	}
-	LogError("No lab matching pointer %p", ptr.get());
+	LogError("No lab matching pointer %p", static_cast<void *>(ptr.get()));
 	return emptyString;
 }
 
@@ -228,12 +230,14 @@ void ResearchState::updateTopicList()
 
 void ResearchState::resortTopicList()
 {
-	topic_list.sort([](sp<ResearchTopic> a, sp<ResearchTopic> b) {
-		if (a->isComplete() != b->isComplete())
-			return b->isComplete();
-		else
-			return a->order < b->order;
-	});
+	topic_list.sort(
+	    [](sp<ResearchTopic> a, sp<ResearchTopic> b)
+	    {
+		    if (a->isComplete() != b->isComplete())
+			    return b->isComplete();
+		    else
+			    return a->order < b->order;
+	    });
 }
 
 Lab::~Lab()

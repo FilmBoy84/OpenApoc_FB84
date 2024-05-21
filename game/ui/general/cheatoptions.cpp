@@ -73,12 +73,10 @@ void CheatOptions::updateMultiplierText(UString controlName, float multMin, floa
 {
 	auto bar = menuform->findControlTyped<ScrollBar>(controlName);
 	auto label = menuform->findControlTyped<Label>("TEXT_" + controlName);
-	float multValue = ((double)bar->getValue() - bar->getMinimum()) /
-	                      ((double)bar->getMaximum() - bar->getMinimum()) * (multMax - multMin) +
-	                  multMin;
-	label->setText(format("%d%%", scaleScrollbarToMultiplier(bar->getValue(), multMin, multMax,
-	                                                         bar->getMinimum(), bar->getMaximum()) *
-	                                  100));
+	label->setText(
+	    format("%.0f%%", scaleScrollbarToMultiplier(bar->getValue(), multMin, multMax,
+	                                                bar->getMinimum(), bar->getMaximum()) *
+	                         100));
 }
 
 void CheatOptions::pause() {}
@@ -107,9 +105,10 @@ void CheatOptions::eventOccurred(Event *e)
 
 	if (e->type() == EVENT_KEY_DOWN)
 	{
-		if (e->keyboard().KeyCode == SDLK_ESCAPE)
+		if (e->keyboard().KeyCode == SDLK_ESCAPE || e->keyboard().KeyCode == SDLK_RETURN ||
+		    e->keyboard().KeyCode == SDLK_KP_ENTER)
 		{
-			fw().stageQueueCommand({StageCmd::Command::POP});
+			menuform->findControl("BUTTON_OK")->click();
 			return;
 		}
 	}
@@ -181,6 +180,39 @@ void CheatOptions::eventOccurred(Event *e)
 			state->getPlayer()->balance +=
 			    menuform->findControlTyped<ScrollBar>("MODIFY_FUNDS")->getValue() * 1000;
 			menuform->findControlTyped<Label>("TEXT_FUNDS")->setText(state->getPlayerBalance());
+		}
+		else if (e->forms().RaisedBy->Name == "BUTTON_SET_TIME_BEFORE_MIDNIGHT")
+		{
+			GameTime gt = state->gameTime;
+			state->gameTime.addTicks(gt.getTicksBetween(gt.getMonthDay(), gt.getHours(),
+			                                            gt.getMinutes(), gt.getSeconds(),
+			                                            gt.getMonthDay(), 23, 59, 59));
+
+			// Clear the time flags in order to avoid side effects due to
+			// "out of game scope" ticks amount added (e.g: flag that a day/week has passed)
+			state->gameTime.clearFlags();
+		}
+		else if (e->forms().RaisedBy->Name == "BUTTON_FAST_FORWARD_END_WEEK")
+		{
+			GameTime gt = state->gameTime;
+			state->gameTime.addTicks(gt.getTicksBetween(gt.getMonthDay(), gt.getHours(),
+			                                            gt.getMinutes(), gt.getSeconds(),
+			                                            gt.getLastDayOfCurrentWeek(), 23, 59, 59));
+
+			// Clear the time flags in order to avoid side effects due to
+			// "out of game scope" ticks amount added (e.g: flag that a day/week has passed)
+			state->gameTime.clearFlags();
+		}
+		else if (e->forms().RaisedBy->Name == "BUTTON_FAST_FORWARD_END_MONTH")
+		{
+			GameTime gt = state->gameTime;
+			state->gameTime.addTicks(gt.getTicksBetween(gt.getMonthDay(), gt.getHours(),
+			                                            gt.getMinutes(), gt.getSeconds(),
+			                                            gt.getLastDayOfCurrentMonth(), 23, 59, 59));
+
+			// Clear the time flags in order to avoid side effects due to
+			// "out of game scope" ticks amount added (e.g: flag that a day/week has passed)
+			state->gameTime.clearFlags();
 		}
 		else if (e->forms().RaisedBy->Name == "BUTTON_FAST_FORWARD_DAY")
 		{

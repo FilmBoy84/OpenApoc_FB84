@@ -1,7 +1,7 @@
 #include "game/state/city/city.h"
+#include "framework/configfile.h"
 #include "framework/framework.h"
 #include "framework/sound.h"
-#include "framework/trace.h"
 #include "game/state/city/base.h"
 #include "game/state/city/building.h"
 #include "game/state/city/scenery.h"
@@ -38,7 +38,6 @@ static std::vector<std::set<TileObject::Type>> layerMap = {
 
 City::~City()
 {
-	TRACE_FN;
 	// Note due to backrefs to Tile*s etc. we need to destroy all tile objects
 	// before the TileMap
 	for (auto &p : this->projectiles)
@@ -72,7 +71,7 @@ City::~City()
 	}
 }
 
-void City::initMap(GameState &state)
+void City::initCity(GameState &state)
 {
 	if (this->map)
 	{
@@ -117,6 +116,8 @@ void City::initMap(GameState &state)
 			}
 		}
 	}
+
+	int subtotalIncome = 0;
 	for (auto &b : this->buildings)
 	{
 		if (b.second->landingPadLocations.empty())
@@ -142,7 +143,14 @@ void City::initMap(GameState &state)
 			spaceports.emplace_back(&state, b.first);
 		}
 		b.second->owner->buildings.emplace_back(&state, b.first);
+
+		populationWorking += b.second->currentWorkforce;
+		populationUnemployed += b.second->maximumWorkforce - b.second->currentWorkforce;
+		subtotalIncome += b.second->currentWage;
 	}
+	averageWage = (populationWorking) ? subtotalIncome / populationWorking : 0;
+	populationUnemployed += 500; // original adjustment
+
 	for (auto &p : this->projectiles)
 	{
 		this->map->addObjectToMap(p);
@@ -223,7 +231,6 @@ void City::handleProjectileHit(GameState &state, sp<Projectile> projectile, bool
 
 void City::update(GameState &state, unsigned int ticks)
 {
-	TRACE_FN_ARGS1("ticks", Strings::fromInteger(static_cast<int>(ticks)));
 	/* FIXME: Temporary 'get something working' HACK
 	 * Every now and then give a landed vehicle a new 'goto random building' mission, so there's
 	 * some activity in the city*/
@@ -232,7 +239,6 @@ void City::update(GameState &state, unsigned int ticks)
 	// Need to use a 'safe' iterator method (IE keep the next it before calling ->update)
 	// as update() calls can erase it's object from the lists
 
-	Trace::start("City::update::projectiles->update");
 	for (auto it = this->projectiles.begin(); it != this->projectiles.end();)
 	{
 		auto p = *it++;
@@ -282,14 +288,10 @@ void City::update(GameState &state, unsigned int ticks)
 		std::get<0>(p)->die(state, std::get<1>(p), std::get<2>(p));
 	}
 
-	Trace::end("City::update::projectiles->update");
-	Trace::start("City::update::scenery->update");
 	for (auto &s : this->scenery)
 	{
 		s->update(state, ticks);
 	}
-	Trace::end("City::update::scenery->update");
-	Trace::start("City::update::doodads->update");
 	for (auto it = this->doodads.begin(); it != this->doodads.end();)
 	{
 		auto d = *it++;
@@ -301,7 +303,6 @@ void City::update(GameState &state, unsigned int ticks)
 		auto p = *it++;
 		p->update(state, ticks);
 	}
-	Trace::end("City::update::doodads->update");
 }
 
 void City::hourlyLoop(GameState &state)
@@ -316,6 +317,11 @@ void City::dailyLoop(GameState &state)
 	if (state.cities["CITYMAP_ALIEN"] != shared_from_this())
 	{
 		repairScenery(state);
+		// check if employment situation changes in the building
+		for (auto &b : buildings)
+		{
+			b.second->updateWorkforce();
+		}
 	}
 	generatePortals(state);
 }
@@ -391,8 +397,15 @@ void City::updateInfiltration(GameState &state)
 	}
 }
 
-void City::repairScenery(GameState &state)
+void City::repairScenery(GameState &state, bool debugRepair)
 {
+	// Work Around to Save Cost Modifier and max Tile Repair to .conf File w/o user Input to enable
+	// Manual Editing
+	// TODO: Remove this once These Settings are available in the more Options Menu
+	config().set("OpenApoc.Mod.SceneryRepairCostFactor",
+	             config().getFloat("OpenApoc.Mod.SceneryRepairCostFactor"));
+	config().set("OpenApoc.Mod.MaxTileRepair", config().getInt("OpenApoc.Mod.MaxTileRepair"));
+
 	// Step 01: Repair damaged scenery one by one
 	std::list<sp<Scenery>> sceneryToUndamage;
 	for (auto &s : scenery)
@@ -412,96 +425,170 @@ void City::repairScenery(GameState &state)
 			owner->balance -= initialType->value;
 			s->damaged = false;
 			s->type = initialType;
-		}
-	}
-	// Step 02: Repair destroyed scenery
-	std::set<sp<Scenery>> sceneryToRepair;
-	for (auto &s : scenery)
-	{
-		if (!s->isAlive())
-		{
-			sceneryToRepair.insert(s);
-		}
-	}
-	// Pick one scenery, add all scenery that must be repaired together, try to repair them
-	while (!sceneryToRepair.empty())
-	{
-		std::set<sp<Scenery>> repairedTogether;
-		std::set<Vec3<int>> addedPositions;
-		auto nextScenery = *sceneryToRepair.begin();
-		repairedTogether.insert(nextScenery);
-		sceneryToRepair.erase(nextScenery);
-		// Keep adding until we added everything
-		bool addedMore = false;
-		do
-		{
-			addedMore = false;
-			for (auto &s : repairedTogether)
+			if (s->type->tile_type == SceneryTileType::TileType::Road)
 			{
-				// Check if all supportedBy scenery is intact or added
-				for (auto &p : s->supportedBy)
+				notifyRoadChange(s->initialPosition, true);
+			}
+		}
+	}
+
+	std::set<sp<OpenApoc::Vehicle>> constructionVehicles = findConstructionVehicles(state);
+	bool ownBuildingsOnly = true;
+
+	while (!constructionVehicles.empty() || debugRepair)
+	{
+		// Step 02: Repair destroyed scenery
+		LogInfo("Repair Cycle starting");
+		std::set<sp<Scenery>> sceneryToRepair;
+		for (auto &s : scenery)
+		{
+			if (!s->isAlive())
+			{
+				sceneryToRepair.insert(s);
+			}
+		}
+
+		std::queue<sp<Scenery>> repairQueue;
+		// Find all scenery which should be repaired this night and add them to the repair Queue
+		// Allows repair for all Scenery which does not need support or has valid support below
+		while (!sceneryToRepair.empty())
+		{
+			std::set<sp<Scenery>> repairedTogether;
+			std::set<Vec3<int>> addedPositions;
+			auto nextScenery = *sceneryToRepair.begin();
+			repairedTogether.insert(nextScenery);
+			sceneryToRepair.erase(nextScenery);
+
+			std::string pos = std::to_string(nextScenery->initialPosition.x) + ", " +
+			                  std::to_string(nextScenery->initialPosition.y) + ", " +
+			                  std::to_string(nextScenery->initialPosition.z);
+			LogInfo("Currently Processing Tile: " + pos);
+
+			if (nextScenery->supportedBy.empty())
+			{
+				LogInfo("Tile at " + pos +
+				        " is has no support requirement, adding to repair queue");
+				repairQueue.push(nextScenery);
+			}
+			else
+			{
+				for (auto &p : nextScenery->supportedBy)
 				{
-					// If no scenery or dead
-					auto support = map->getTile(p)->presentScenery;
+					auto &support = map->getTile(p)->presentScenery;
+
 					if (!support || !support->isAlive())
 					{
-						// If we haven't added it already
-						if (addedPositions.find(p) == addedPositions.end())
-						{
-							// Need to find it by its initial position
-							for (auto &deadScenery : scenery)
-							{
-								if (deadScenery->initialPosition == p)
-								{
-									repairedTogether.insert(deadScenery);
-									break;
-								}
-							}
-						}
+						LogInfo("Tile at " + pos + " has no support due to destroyed tile below");
 					}
-				} // for every supportedBy position
-			}     // for every repairedTogether scenery
-		} while (addedMore);
-		// Try to repair all or none
-		std::map<StateRef<Organisation>, int> repairCost;
-		for (auto &deadScenery : repairedTogether)
-		{
-			auto initialType = initial_tiles[deadScenery->initialPosition];
-			auto owner = deadScenery->building && !initialType->commonProperty
-			                 ? deadScenery->building->owner
-			                 : state.getGovernment();
-			repairCost[owner] += initialType->value;
+					else
+					{
+						LogInfo("Tile at " + pos + " has support below, adding to repair queue");
+						repairQueue.push(nextScenery);
+					}
+				}
+			}
 		}
-		bool canAfford = true;
-		for (auto &entry : repairCost)
+
+		int tilesRepaired = 0;
+		// Actually start repairing as long as enought funds and construction vehicles are available
+		// this night
+		while (!repairQueue.empty())
 		{
-			if (entry.first->balance < entry.second)
+			auto &s = repairQueue.front();
+			auto initialType = initial_tiles[s->initialPosition];
+			auto buildingOwner = s->building && !initialType->commonProperty
+			                         ? s.get()->building->owner
+			                         : state.getGovernment();
+
+			// search for available construction vehicles
+			sp<OpenApoc::Vehicle> currentVehicle = NULL;
+			if (ownBuildingsOnly)
 			{
-				canAfford = false;
+				for (auto &v : constructionVehicles)
+				{
+					if (v->owner == buildingOwner)
+					{
+						currentVehicle = v;
+						break;
+					}
+				}
+			}
+			else
+			{
+				for (auto &v : constructionVehicles)
+				{
+					// if relation is friendly or allied, help them bros out
+					if (buildingOwner->getRelationTo(v->owner) > +24.0f)
+					{
+						currentVehicle = v;
+						break;
+					}
+				}
+			}
+			// check if sufficient funds are available, the tile is still dead and a construction
+			// vehicle is available
+			if (buildingOwner->balance < initialType->value || s->isAlive() ||
+			    (currentVehicle == NULL && !debugRepair))
+			{
+				repairQueue.pop();
+				continue;
+			}
+			else
+			{
+				// pay
+				buildingOwner->balance -=
+				    initialType->value * config().getFloat("OpenApoc.Mod.SceneryRepairCostFactor");
+				// repair
+				s->repair(state);
+				// delete out of list to prevent repairing again
+				repairQueue.pop();
+				tilesRepaired++;
+				if (currentVehicle &&
+				    currentVehicle->tilesRepaired++ > config().getInt("OpenApoc.Mod.MaxTileRepair"))
+				{
+					constructionVehicles.erase(currentVehicle);
+				}
+			}
+		}
+		// No Tiles repaired in last iteration due to no funds or vehicle match, look to help
+		// allies, otherwise break
+		if (tilesRepaired <= 0 || debugRepair)
+		{
+			if (ownBuildingsOnly && !debugRepair)
+			{
+				ownBuildingsOnly = false;
+				continue;
+			}
+			else
+			{
 				break;
 			}
 		}
-		if (canAfford)
+	}
+
+	// Reset Vehicles to be ready for the next repair cycle
+	constructionVehicles = findConstructionVehicles(state);
+	for (auto &v : constructionVehicles)
+	{
+		v->tilesRepaired = 0;
+	}
+
+	LogInfo("Repair Cycle Complete");
+}
+
+std::set<sp<OpenApoc::Vehicle>> City::findConstructionVehicles(GameState &state)
+{
+	std::set<sp<OpenApoc::Vehicle>> constructionVehicles;
+	// find available construction vehicles
+	for (auto &v : state.vehicles)
+	{
+		if (v.second->name.find("Construction") != std::string::npos && !v.second->crashed)
 		{
-			// pay
-			for (auto &entry : repairCost)
-			{
-				auto org = entry.first;
-				org->balance -= entry.second;
-			}
-			// repair
-			for (auto &deadScenery : repairedTogether)
-			{
-				// remove from scenery to repair
-				if (sceneryToRepair.find(deadScenery) != sceneryToRepair.end())
-				{
-					sceneryToRepair.erase(deadScenery);
-				}
-				// repair actually
-				deadScenery->repair(state);
-			}
+			constructionVehicles.insert(v.second);
 		}
 	}
+
+	return constructionVehicles;
 }
 
 void City::repairVehicles(GameState &state [[maybe_unused]])
@@ -737,7 +824,7 @@ sp<Vehicle> City::placeVehicle(GameState &state, StateRef<VehicleType> type,
 	return v;
 }
 
-sp<City> City::get(const GameState &state, const UString &id)
+template <> sp<City> StateObject<City>::get(const GameState &state, const UString &id)
 {
 	auto it = state.cities.find(id);
 	if (it == state.cities.end())
@@ -748,18 +835,18 @@ sp<City> City::get(const GameState &state, const UString &id)
 	return it->second;
 }
 
-const UString &City::getPrefix()
+template <> const UString &StateObject<City>::getPrefix()
 {
 	static UString prefix = "CITYMAP_";
 	return prefix;
 }
-const UString &City::getTypeName()
+template <> const UString &StateObject<City>::getTypeName()
 {
 	static UString name = "City";
 	return name;
 }
 
-const UString &City::getId(const GameState &state, const sp<City> ptr)
+template <> const UString &StateObject<City>::getId(const GameState &state, const sp<City> ptr)
 {
 	static const UString emptyString = "";
 	for (auto &c : state.cities)
@@ -769,7 +856,7 @@ const UString &City::getId(const GameState &state, const sp<City> ptr)
 			return c.first;
 		}
 	}
-	LogError("No city matching pointer %p", ptr.get());
+	LogError("No city matching pointer %p", static_cast<void *>(ptr.get()));
 	return emptyString;
 }
 

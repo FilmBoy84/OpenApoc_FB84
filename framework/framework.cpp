@@ -7,6 +7,7 @@
 #include "framework/filesystem.h"
 #include "framework/font.h"
 #include "framework/image.h"
+#include "framework/jukebox.h"
 #include "framework/logger_file.h"
 #include "framework/logger_sdldialog.h"
 #include "framework/options.h"
@@ -14,16 +15,22 @@
 #include "framework/renderer_interface.h"
 #include "framework/sound_interface.h"
 #include "framework/stagestack.h"
-#include "framework/trace.h"
 #include "library/sp.h"
 #include "library/xorshift.h"
 #include <SDL.h>
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <fstream>
 #include <list>
 #include <map>
+#include <string_view>
 #include <vector>
+
+#ifdef __APPLE__
+// Used for NASTY chdir() app bundle hacks
+#include <unistd.h>
+#endif
 
 // SDL_syswm includes windows.h on windows, which does all kinds of polluting
 // defines/namespace stuff, so try to avoid that
@@ -50,118 +57,6 @@ UString Framework::getDataDir() const { return Options::dataPathOption.get(); }
 UString Framework::getCDPath() const { return Options::cdPathOption.get(); }
 
 Framework *Framework::instance = nullptr;
-
-// TODO: Make this moddable
-const std::vector<std::vector<UString>> playlists = {
-    // None
-    {},
-    // Cityscape Ambient
-    {"music:0", "music:1", "music:2", "music:3", "music:4", "music:5", "music:6", "music:7",
-     "music:8", "music:9"},
-    // Tactical Ambient (also Cityscape Action)
-    {"music:10", "music:11", "music:12", "music:13", "music:14", "music:15", "music:16", "music:17",
-     "music:18", "music:19"},
-    // Tactical Action
-    {"music:20", "music:21", "music:22", "music:23", "music:24", "music:25", "music:26",
-     "music:27"},
-    // Alien Dimension
-    {"music:28", "music:29", "music:30", "music:31", "music:32"}};
-
-class JukeBoxImpl : public JukeBox
-{
-	Framework &fw;
-	unsigned int position;
-	std::vector<sp<MusicTrack>> trackList;
-	PlayMode mode;
-	PlayList list;
-	Xorshift128Plus<uint64_t> rng;
-
-  public:
-	JukeBoxImpl(Framework &fw) : fw(fw), position(0), mode(PlayMode::Shuffle), list(PlayList::None)
-	{
-		// Use the time to give a little initial randomness to the shuffle rng
-		auto time_now = std::chrono::system_clock::now();
-		uint64_t time_seconds =
-		    std::chrono::duration_cast<std::chrono::seconds>(time_now.time_since_epoch()).count();
-		rng.seed(time_seconds);
-	}
-	~JukeBoxImpl() override { this->stop(); }
-
-	void shuffle() { std::shuffle(trackList.begin(), trackList.end(), rng); }
-
-	void play(PlayList list, PlayMode mode) override
-	{
-		if (this->list == list)
-			return;
-		this->list = list;
-		if (this->list == PlayList::None)
-		{
-			this->stop();
-		}
-		else
-		{
-			this->play(playlists[(int)list], mode);
-		}
-	}
-
-	void play(const std::vector<UString> &tracks, PlayMode mode) override
-	{
-		this->trackList.clear();
-		this->position = 0;
-		this->mode = mode;
-		for (auto &track : tracks)
-		{
-			auto musicTrack = fw.data->loadMusic(track);
-			if (!musicTrack)
-				LogError("Failed to load music track \"%s\" - skipping", track);
-			else
-				this->trackList.push_back(musicTrack);
-		}
-		if (mode == PlayMode::Shuffle)
-			shuffle();
-		this->progressTrack(this);
-		this->fw.soundBackend->playMusic(progressTrack, this);
-	}
-
-	static void progressTrack(void *data)
-	{
-		JukeBoxImpl *jukebox = static_cast<JukeBoxImpl *>(data);
-		if (jukebox->trackList.empty())
-		{
-			LogWarning("Trying to play empty jukebox");
-			return;
-		}
-		if (jukebox->position >= jukebox->trackList.size())
-		{
-			LogInfo("End of jukebox playlist");
-			return;
-		}
-		LogInfo("Playing track %u (%s)", jukebox->position,
-		        jukebox->trackList[jukebox->position]->getName());
-		jukebox->fw.soundBackend->setTrack(jukebox->trackList[jukebox->position]);
-
-		jukebox->position++;
-		if (jukebox->position >= jukebox->trackList.size())
-		{
-			if (jukebox->mode == PlayMode::Loop)
-			{
-				jukebox->position = 0;
-			}
-			else if (jukebox->mode == PlayMode::Shuffle)
-			{
-				jukebox->position = 0;
-				jukebox->shuffle();
-			}
-		}
-	}
-
-	void stop() override
-	{
-		this->list = PlayList::None;
-		fw.soundBackend->stopMusic();
-	}
-};
-
 class FrameworkPrivate
 {
   private:
@@ -187,7 +82,7 @@ class FrameworkPrivate
 	sp<Surface> scaleSurface;
 	up<ThreadPool> threadPool;
 
-	int toolTipTimerId = 0;
+	std::atomic<int> toolTipTimerId = 0;
 	up<Event> toolTipTimerEvent;
 	sp<Image> toolTipImage;
 	Vec2<int> toolTipPosition;
@@ -218,7 +113,6 @@ class FrameworkPrivate
 Framework::Framework(const UString programName, bool createWindow)
     : p(new FrameworkPrivate), programName(programName), createWindow(createWindow)
 {
-	TRACE_FN;
 	LogInfo("Starting framework");
 
 	if (this->instance)
@@ -228,9 +122,29 @@ Framework::Framework(const UString programName, bool createWindow)
 
 	this->instance = this;
 
+#ifdef __APPLE__
+	{
+		// FIXME: A hack to set the working directory to the Resources directory in the app bundle.
+		char *basePath = SDL_GetBasePath();
+		// FIXME: How to check we're being run from the app bundle and not directly from the
+		// terminal? On my testing (macos 10.15.1 19B88) it seems to have a "/" working directory,
+		// which is unlikely in terminal use, so use that?
+		if (fs::current_path() == "/")
+		{
+			LogWarning("Setting working directory to \"%s\"", basePath);
+			chdir(basePath);
+		}
+		else
+		{
+			LogWarning("Leaving default working directory \"%s\"", fs::current_path());
+		}
+		SDL_free(basePath);
+	}
+#endif
+
 	if (!PHYSFS_isInit())
 	{
-		if (PHYSFS_init(programName.cStr()) == 0)
+		if (PHYSFS_init(programName.c_str()) == 0)
 		{
 			PHYSFS_ErrorCode error = PHYSFS_getLastErrorCode();
 			LogError("Failed to init code %i PHYSFS: %s", (int)error, PHYSFS_getErrorByCode(error));
@@ -270,7 +184,7 @@ Framework::Framework(const UString programName, bool createWindow)
 
 	logPath += "/log.txt";
 
-	enableFileLogger(logPath.cStr());
+	enableFileLogger(logPath.c_str());
 
 	Options::dumpOptionsToLog();
 
@@ -294,17 +208,17 @@ Framework::Framework(const UString programName, bool createWindow)
 	{
 		auto langPath = path + "/languages";
 		LogInfo("Adding \"%s\" to language path", langPath);
-		gen.add_messages_path(langPath.str());
+		gen.add_messages_path(langPath);
 	}
 
 	std::vector<UString> translationDomains = {"paedia_string", "ufo_string"};
 	for (auto &domain : translationDomains)
 	{
 		LogInfo("Adding \"%s\" to translation domains", domain);
-		gen.add_messages_domain(domain.str());
+		gen.add_messages_domain(domain);
 	}
 
-	std::locale loc = gen(desiredLanguageName.str());
+	std::locale loc = gen(desiredLanguageName);
 	std::locale::global(loc);
 
 	auto localeName = std::use_facet<boost::locale::info>(loc).name();
@@ -346,7 +260,6 @@ Framework::Framework(const UString programName, bool createWindow)
 
 Framework::~Framework()
 {
-	TRACE_FN;
 	LogInfo("Destroying framework");
 	// Stop any audio first, as if you've got ongoing music/samples it could call back into the
 	// framework for the threadpool/data read/all kinda of stuff it shouldn't do on a
@@ -393,17 +306,39 @@ void Framework::run(sp<Stage> initialStage)
 		return;
 	}
 	size_t frame = 0;
-	TRACE_FN;
 	LogInfo("Program loop started");
+
+	auto target_frame_duration =
+	    std::chrono::duration<int64_t, std::micro>(1000000 / Options::targetFPS.get());
 
 	p->ProgramStages.push(initialStage);
 
 	this->renderer->setPalette(this->data->loadPalette("xcom3/ufodata/pal_06.dat"));
+	auto expected_frame_time = std::chrono::steady_clock::now();
+
+	bool frame_time_limited_warning_shown = false;
 
 	while (!p->quitProgram)
 	{
+		auto frame_time_now = std::chrono::steady_clock::now();
+		if (expected_frame_time > frame_time_now)
+		{
+			auto time_to_sleep = expected_frame_time - frame_time_now;
+			auto time_to_sleep_us =
+			    std::chrono::duration_cast<std::chrono::microseconds>(time_to_sleep);
+			LogDebug("sleeping for %d us", time_to_sleep_us.count());
+			std::this_thread::sleep_for(time_to_sleep);
+			continue;
+		}
+		expected_frame_time += target_frame_duration;
 		frame++;
-		TraceObj obj{"Frame", {{"frame", Strings::fromInteger(frame)}}};
+
+		if (!frame_time_limited_warning_shown &&
+		    frame_time_now > expected_frame_time + 5 * target_frame_duration)
+		{
+			frame_time_limited_warning_shown = true;
+			LogWarning("Over 5 frames behind - likely vsync limited?");
+		}
 
 		processEvents();
 
@@ -412,7 +347,6 @@ void Framework::run(sp<Stage> initialStage)
 			break;
 		}
 		{
-			TraceObj updateObj("Update");
 			p->ProgramStages.current()->update();
 		}
 
@@ -451,12 +385,10 @@ void Framework::run(sp<Stage> initialStage)
 		auto surface = p->scaleSurface ? p->scaleSurface : p->defaultSurface;
 		RendererSurfaceBinding b(*this->renderer, surface);
 		{
-			TraceObj objClear{"clear"};
 			this->renderer->clear();
 		}
 		if (!p->ProgramStages.isEmpty())
 		{
-			TraceObj updateObj("Render");
 			p->ProgramStages.current()->render();
 			if (p->toolTipImage)
 			{
@@ -466,12 +398,10 @@ void Framework::run(sp<Stage> initialStage)
 			if (p->scaleSurface)
 			{
 				RendererSurfaceBinding scaleBind(*this->renderer, p->defaultSurface);
-				TraceObj objClear{"clear scale"};
 				this->renderer->clear();
 				this->renderer->drawScaled(p->scaleSurface, {0, 0}, p->windowSize);
 			}
 			{
-				TraceObj flipObj("Flip");
 				this->renderer->flush();
 				this->renderer->newFrame();
 				SDL_GL_SwapWindow(p->window);
@@ -487,7 +417,6 @@ void Framework::run(sp<Stage> initialStage)
 
 void Framework::processEvents()
 {
-	TRACE_FN;
 	if (p->ProgramStages.isEmpty())
 	{
 		p->quitProgram = true;
@@ -521,7 +450,7 @@ void Framework::processEvents()
 				{
 					screenshotName = format("screenshot%03d.png", screenshotId);
 					screenshotId++;
-				} while (fs::exists(fs::path(screenshotName.str())));
+				} while (fs::exists(fs::path(screenshotName)));
 				LogWarning("Writing screenshot to \"%s\"", screenshotName);
 				if (!p->defaultSurface->rendererPrivateData)
 				{
@@ -536,17 +465,19 @@ void Framework::processEvents()
 					}
 					else
 					{
-						this->threadPoolTaskEnqueue([img, screenshotName] {
-							auto ret = fw().data->writeImage(screenshotName, img);
-							if (!ret)
-							{
-								LogWarning("Failed to write screenshot");
-							}
-							else
-							{
-								LogWarning("Wrote screenshot to \"%s\"", screenshotName);
-							}
-						});
+						this->threadPoolTaskEnqueue(
+						    [img, screenshotName]
+						    {
+							    auto ret = fw().data->writeImage(screenshotName, img);
+							    if (!ret)
+							    {
+								    LogWarning("Failed to write screenshot");
+							    }
+							    else
+							    {
+								    LogWarning("Wrote screenshot to \"%s\"", screenshotName);
+							    }
+						    });
 					}
 				}
 			}
@@ -630,8 +561,8 @@ void Framework::translateSdlEvents()
 				break;
 			case SDL_MOUSEMOTION:
 				fwE = new MouseEvent(EVENT_MOUSE_MOVE);
-				fwE->mouse().X = e.motion.x;
-				fwE->mouse().Y = e.motion.y;
+				fwE->mouse().X = coordWindowToDisplayX(e.motion.x);
+				fwE->mouse().Y = coordWindowToDisplayY(e.motion.y);
 				fwE->mouse().DeltaX = e.motion.xrel;
 				fwE->mouse().DeltaY = e.motion.yrel;
 				fwE->mouse().WheelVertical = 0;   // These should be handled
@@ -641,14 +572,14 @@ void Framework::translateSdlEvents()
 				break;
 			case SDL_MOUSEWHEEL:
 				// FIXME: Check these values for sanity
-				fwE = new MouseEvent(EVENT_MOUSE_MOVE);
+				fwE = new MouseEvent(EVENT_MOUSE_SCROLL);
 				// Since I'm using some variables that are not used anywhere else,
 				// this code should be in its own small block.
 				{
 					int mx, my;
 					fwE->mouse().Button = SDL_GetMouseState(&mx, &my);
-					fwE->mouse().X = mx;
-					fwE->mouse().Y = my;
+					fwE->mouse().X = coordWindowToDisplayX(mx);
+					fwE->mouse().Y = coordWindowToDisplayY(my);
 					fwE->mouse().DeltaX = 0; // FIXME: This might cause problems?
 					fwE->mouse().DeltaY = 0;
 					fwE->mouse().WheelVertical = e.wheel.y;
@@ -658,8 +589,8 @@ void Framework::translateSdlEvents()
 				break;
 			case SDL_MOUSEBUTTONDOWN:
 				fwE = new MouseEvent(EVENT_MOUSE_DOWN);
-				fwE->mouse().X = e.button.x;
-				fwE->mouse().Y = e.button.y;
+				fwE->mouse().X = coordWindowToDisplayX(e.button.x);
+				fwE->mouse().Y = coordWindowToDisplayY(e.button.y);
 				fwE->mouse().DeltaX = 0; // FIXME: This might cause problems?
 				fwE->mouse().DeltaY = 0;
 				fwE->mouse().WheelVertical = 0;
@@ -669,8 +600,8 @@ void Framework::translateSdlEvents()
 				break;
 			case SDL_MOUSEBUTTONUP:
 				fwE = new MouseEvent(EVENT_MOUSE_UP);
-				fwE->mouse().X = e.button.x;
-				fwE->mouse().Y = e.button.y;
+				fwE->mouse().X = coordWindowToDisplayX(e.button.x);
+				fwE->mouse().Y = coordWindowToDisplayY(e.button.y);
 				fwE->mouse().DeltaX = 0; // FIXME: This might cause problems?
 				fwE->mouse().DeltaY = 0;
 				fwE->mouse().WheelVertical = 0;
@@ -783,13 +714,37 @@ void Framework::shutdownFramework()
 	p->quitProgram = true;
 }
 
+enum class ScreenMode
+{
+	Unknown,
+	Windowed,
+	FullScreen,
+	Borderless
+};
+
+static ScreenMode optionsScreenMode()
+{
+	constexpr std::array<std::pair<std::string_view, ScreenMode>, 3> mode_names = {
+	    {{"windowed", ScreenMode::Windowed},
+	     {"fullscreen", ScreenMode::FullScreen},
+	     {"borderless", ScreenMode::Borderless}}};
+
+	for (const auto &mode_name : mode_names)
+	{
+		if (Options::screenModeOption.get() == mode_name.first)
+		{
+			return mode_name.second;
+		}
+	}
+	return ScreenMode::Unknown;
+}
+
 void Framework::displayInitialise()
 {
 	if (!this->createWindow)
 	{
 		return;
 	}
-	TRACE_FN;
 	LogInfo("Init display");
 	int display_flags = SDL_WINDOW_OPENGL;
 #ifdef OPENAPOC_GLES
@@ -815,9 +770,27 @@ void Framework::displayInitialise()
 
 	SDL_GL_SetSwapInterval(Options::swapInterval.get());
 
+	ScreenMode mode = optionsScreenMode();
+	if (mode == ScreenMode::Unknown)
+	{
+		LogError("Unknown screen mode specified: {%s}", Options::screenModeOption.get());
+		mode = ScreenMode::Windowed;
+	}
+
+	if (mode == ScreenMode::FullScreen)
+		display_flags |= SDL_WINDOW_FULLSCREEN;
+	else if (mode == ScreenMode::Borderless)
+		display_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+
+	int displayNumber = Options::screenDisplayNumberOption.get();
+	if (displayNumber >= SDL_GetNumVideoDisplays())
+	{
+		LogWarning("Requested display number (%d) does not exist. Using display 0", displayNumber);
+		displayNumber = 0;
+	}
+
 	int scrW = Options::screenWidthOption.get();
 	int scrH = Options::screenHeightOption.get();
-	bool scrFS = Options::screenFullscreenOption.get();
 
 	if (scrW < 640 || scrH < 480)
 	{
@@ -826,13 +799,9 @@ void Framework::displayInitialise()
 		    scrW, scrH);
 	}
 
-	if (scrFS)
-	{
-		display_flags |= SDL_WINDOW_FULLSCREEN;
-	}
-
-	p->window = SDL_CreateWindow("OpenApoc", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, scrW,
-	                             scrH, display_flags);
+	p->window =
+	    SDL_CreateWindow("OpenApoc", SDL_WINDOWPOS_UNDEFINED_DISPLAY(displayNumber),
+	                     SDL_WINDOWPOS_UNDEFINED_DISPLAY(displayNumber), scrW, scrH, display_flags);
 
 	if (!p->window)
 	{
@@ -893,7 +862,7 @@ void Framework::displayInitialise()
 	p->registeredRenderers["GL_2_0"].reset(getGL20RendererFactory());
 #endif
 
-	for (auto &rendererName : Options::renderersOption.get().split(':'))
+	for (auto &rendererName : split(Options::renderersOption.get(), ":"))
 	{
 		auto rendererFactory = p->registeredRenderers.find(rendererName);
 		if (rendererFactory == p->registeredRenderers.end())
@@ -926,16 +895,24 @@ void Framework::displayInitialise()
 	// size)
 	int scaleX = Options::screenScaleXOption.get();
 	int scaleY = Options::screenScaleYOption.get();
+	const bool autoScale = Options::screenAutoScale.get();
 
-	if (scaleX != 100 || scaleY != 100)
+	if (scaleX != 100 || scaleY != 100 || autoScale)
 	{
 		float scaleXFloat = (float)scaleX / 100.0f;
 		float scaleYFloat = (float)scaleY / 100.0f;
+		if (autoScale)
+		{
+			constexpr int referenceWidth = 1280;
+			scaleYFloat = scaleXFloat = (float)referenceWidth / p->windowSize.x;
+			LogInfo("Autoscaling enabled, scaling by (%f,%f)", scaleXFloat, scaleYFloat);
+		}
+
 		p->displaySize.x = (int)((float)p->windowSize.x * scaleXFloat);
 		p->displaySize.y = (int)((float)p->windowSize.y * scaleYFloat);
 		if (p->displaySize.x < 640 || p->displaySize.y < 480)
 		{
-			LogWarning("Requested scaled size of %s is lower than {640,480} and probably "
+			LogWarning("Requested scaled size of %d is lower than {640,480} and probably "
 			           "won't work, so forcing 640x480",
 			           p->displaySize.x);
 			p->displaySize.x = std::max(640, p->displaySize.x);
@@ -958,7 +935,6 @@ void Framework::displayShutdown()
 	{
 		return;
 	}
-	TRACE_FN;
 	LogInfo("Shutdown Display");
 	p->defaultSurface.reset();
 	renderer.reset();
@@ -973,6 +949,21 @@ int Framework::displayGetHeight() { return p->displaySize.y; }
 
 Vec2<int> Framework::displayGetSize() { return p->displaySize; }
 
+int Framework::coordWindowToDisplayX(int x) const
+{
+	return (float)x / p->windowSize.x * p->displaySize.x;
+}
+
+int Framework::coordWindowToDisplayY(int y) const
+{
+	return (float)y / p->windowSize.y * p->displaySize.y;
+}
+
+Vec2<int> Framework::coordWindowsToDisplay(const Vec2<int> &coord) const
+{
+	return Vec2<int>(coordWindowToDisplayX(coord.x), coordWindowToDisplayY(coord.y));
+}
+
 bool Framework::displayHasWindow() const
 {
 	if (createWindow == false)
@@ -986,7 +977,7 @@ void Framework::displaySetTitle(UString NewTitle)
 {
 	if (p->window)
 	{
-		SDL_SetWindowTitle(p->window, NewTitle.cStr());
+		SDL_SetWindowTitle(p->window, NewTitle.c_str());
 	}
 }
 
@@ -1016,13 +1007,14 @@ void Framework::displaySetIcon(sp<RGBImage> image)
 
 void Framework::audioInitialise()
 {
-	TRACE_FN;
 	LogInfo("Initialise Audio");
 
 	p->registeredSoundBackends["SDLRaw"].reset(getSDLSoundBackend());
 	p->registeredSoundBackends["null"].reset(getNullSoundBackend());
 
-	for (auto &soundBackendName : Options::audioBackendsOption.get().split(':'))
+	auto concurrent_sample_count = Options::audioConcurrentSampleCount.get();
+
+	for (auto &soundBackendName : split(Options::audioBackendsOption.get(), ":"))
 	{
 		auto backendFactory = p->registeredSoundBackends.find(soundBackendName);
 		if (backendFactory == p->registeredSoundBackends.end())
@@ -1030,7 +1022,7 @@ void Framework::audioInitialise()
 			LogInfo("Sound backend %s not in supported list", soundBackendName);
 			continue;
 		}
-		SoundBackend *backend = backendFactory->second->create();
+		SoundBackend *backend = backendFactory->second->create(concurrent_sample_count);
 		if (!backend)
 		{
 			LogInfo("Sound backend %s failed to init", soundBackendName);
@@ -1044,7 +1036,7 @@ void Framework::audioInitialise()
 	{
 		LogError("No functional sound backend found");
 	}
-	this->jukebox.reset(new JukeBoxImpl(*this));
+	this->jukebox = createJukebox(*this);
 
 	/* Setup initial gain */
 	this->soundBackend->setGain(SoundBackend::Gain::Global,
@@ -1057,7 +1049,6 @@ void Framework::audioInitialise()
 
 void Framework::audioShutdown()
 {
-	TRACE_FN;
 	LogInfo("Shutdown Audio");
 	this->jukebox.reset();
 	this->soundBackend.reset();
@@ -1089,7 +1080,8 @@ void Framework::toolTipStartTimer(up<Event> e)
 	p->toolTipTimerEvent = std::move(e);
 	p->toolTipTimerId = SDL_AddTimer(
 	    delay,
-	    [](unsigned int interval, void *data) -> unsigned int {
+	    [](unsigned int interval, void *data) -> unsigned int
+	    {
 		    fw().toolTipTimerCallback(interval, data);
 		    // remove this sdl timer
 		    return 0;
@@ -1140,7 +1132,7 @@ void *Framework::getWindowHandle() const { return static_cast<void *>(p->window)
 
 void Framework::setupModDataPaths()
 {
-	auto mods = Options::modList.get().split(":");
+	auto mods = split(Options::modList.get(), ":");
 	for (const auto &modString : mods)
 	{
 		LogWarning("loading mod \"%s\"", modString);

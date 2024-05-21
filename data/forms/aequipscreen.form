@@ -84,10 +84,11 @@
       </scroll>
       <listbox id="AGENT_SELECT_BOX" scrollbarid="AGENT_SELECT_SCROLL">
         <position x="463" y="70"/>
-        <size width="98" height="260"/>
+        <size width="96" height="260"/>
         <item size="0" spacing="5"/>
         <hovercolour r="255" g="255" b="255" a="0"/>
         <selcolour r="255" g="255" b="255" a="0"/>
+        <autoselect>no</autoselect>
       </listbox>
       <graphicbutton id="AGENT_SCROLL_UP" scrollprev="AGENT_SELECT_SCROLL">
         <tooltip text="Scroll Up" font="smallset"/>
@@ -103,7 +104,7 @@
         <image/>
         <imagedepressed>BUTTON_SCROLL_DOWN_DEPRESSED</imagedepressed>
       </graphicbutton>
-      <checkbox ID="BUTTON_TOGGLE_STATS">
+      <checkbox id="BUTTON_TOGGLE_STATS">
         <position x="167" y="56"/>
         <size width="22" height="21"/>
         <image/>
@@ -117,6 +118,12 @@
       </graphic>
 
       <subform id="AGENT_STATS_VIEW" src="sheet_agent_stats">
+        <position x="17" y="62"/>
+      </subform>
+      <subform id="AGENT_PROFILE_VIEW" src="sheet_agent_profile">
+        <position x="17" y="62"/>
+      </subform>
+      <subform id="AGENT_HISTORY_VIEW" src="sheet_agent_history">
         <position x="17" y="62"/>
       </subform>
       <subform id="AGENT_ITEM_VIEW" src="sheet_agent_item">

@@ -318,6 +318,7 @@ const std::vector<int> InitialGameStateExtractor::buildingFunctionDetectionWeigh
 
 void InitialGameStateExtractor::extractCommon(GameState &state) const
 {
+	this->extractResearch(state);
 	this->extractOrganisations(state);
 	this->extractVehicleEquipment(state);
 	this->extractAgentBodyTypes(state);
@@ -325,7 +326,6 @@ void InitialGameStateExtractor::extractCommon(GameState &state) const
 	this->extractVehicles(state);
 	this->extractFacilities(state);
 	this->extractBaseLayouts(state);
-	this->extractResearch(state);
 	this->extractAgentEquipment(state);
 	this->extractDoodads(state);
 	this->extractBuildingFunctions(state);
@@ -363,6 +363,7 @@ void InitialGameStateExtractor::extract(GameState &state, Difficulty difficulty)
 
 	state.cities[humanMapId] = std::make_shared<City>();
 	state.cities[humanMapId]->id = humanMapId;
+	state.cities[humanMapId]->civilianSalary = 65; // this is default value in UFO2P code
 	state.cities[humanMapId]->researchUnlock.emplace_back(&state,
 	                                                      "RESEARCH_UNLOCK_DIMENSION_GATES");
 

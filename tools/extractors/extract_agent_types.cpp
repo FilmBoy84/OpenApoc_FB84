@@ -15,8 +15,8 @@
 
 #define HUMAN_FEMALE_PORTRAIT_START 0
 #define HUMAN_FEMALE_PORTRAIT_END 30
-//#define HYBRID_FEMALE_PORTRAIT_START  30
-//#define HYBRID_FEMALE_PORTRAIT_END  35
+// #define HYBRID_FEMALE_PORTRAIT_START  30
+// #define HYBRID_FEMALE_PORTRAIT_END  35
 #define HUMAN_MALE_PORTRAIT_START 35
 #define HUMAN_MALE_PORTRAIT_END 65
 #define HYBRID_MALE_PORTRAIT_START 65
@@ -165,14 +165,17 @@ void InitialGameStateExtractor::extractAgentTypes(GameState &state) const
 			case UNIT_TYPE_BIOCHEMIST:
 				a->role = AgentType::Role::BioChemist;
 				a->playable = true;
+				a->availableAtTheGameStart = true;
 				break;
 			case UNIT_TYPE_ENGINEER:
 				a->role = AgentType::Role::Engineer;
 				a->playable = true;
+				a->availableAtTheGameStart = true;
 				break;
 			case UNIT_TYPE_QUANTUM_PHYSIST:
 				a->role = AgentType::Role::Physicist;
 				a->playable = true;
+				a->availableAtTheGameStart = true;
 				break;
 			default:
 				a->role = AgentType::Role::Soldier;

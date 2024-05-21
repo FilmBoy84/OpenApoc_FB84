@@ -4,6 +4,7 @@
 #include "forms/listbox.h"
 #include "forms/scrollbar.h"
 #include "forms/ui.h"
+#include "framework/configfile.h"
 #include "framework/data.h"
 #include "framework/framework.h"
 #include "framework/logger.h"
@@ -63,18 +64,24 @@ void TransactionControl::initResources()
 
 void TransactionControl::setScrollbarValues()
 {
-	if (tradeState.getLeftIndex() == tradeState.getRightIndex())
+	auto leftStock = 0;
+	auto rightStock = 0;
+	auto balance = 0;
+
+	if (tradeState.getLeftIndex() != tradeState.getRightIndex())
 	{
-		scrollBar->setMinimum(0);
-		scrollBar->setMaximum(0);
-		scrollBar->setValue(0);
+		leftStock = tradeState.getLeftStock();
+		rightStock = tradeState.getRightStock();
+		balance = tradeState.getBalance();
 	}
-	else
-	{
-		scrollBar->setMinimum(0);
-		scrollBar->setMaximum(tradeState.getLeftStock() + tradeState.getRightStock());
-		scrollBar->setValue(tradeState.getBalance());
-	}
+
+	const auto minimum = 0;
+	const auto maximum = leftStock + rightStock;
+
+	scrollBar->setMinimum(minimum);
+	scrollBar->setMaximum(maximum);
+	scrollBar->setValue(balance);
+
 	updateValues();
 }
 
@@ -254,7 +261,7 @@ TransactionControl::createControl(GameState &state, StateRef<AEquipmentType> age
 	bool isBio = agentEquipmentType->bioStorage;
 	int price = 0;
 	int storeSpace = agentEquipmentType->store_space;
-	bool researched = isBio ? true : state.research.isComplete(agentEquipmentType);
+	bool researched = isBio ? true : agentEquipmentType->research_dependency.satisfied();
 
 	std::vector<int> initialStock;
 	bool hasStock = false;
@@ -324,7 +331,7 @@ TransactionControl::createControl(GameState &state, StateRef<VEquipmentType> veh
 {
 	int price = 0;
 	int storeSpace = vehicleEquipmentType->store_space;
-	bool researched = state.research.isComplete(vehicleEquipmentType);
+	bool researched = vehicleEquipmentType->research_dependency.satisfied();
 
 	std::vector<int> initialStock;
 	bool hasStock = false;
@@ -672,14 +679,40 @@ TransactionControl::createControl(const UString &id, Type type, const UString &n
 	control->scrollBar->setMinimum(0);
 	control->scrollBar->setMaximum(0);
 	// ScrollBar buttons
+
+	// Set tooltip text for buttons
+	UString buttonTooltipLeftText;
+	UString buttonTooltipRightText;
+	bool marketOnRight = config().getBool("OpenApoc.NewFeature.MarketOnRight");
+	switch (control->itemType)
+	{
+		case Type::AgentEquipmentBio:
+			buttonTooltipLeftText = "Contain";
+			buttonTooltipRightText = "Destroy";
+			break;
+		case Type::BioChemist:
+		case Type::Engineer:
+		case Type::Physicist:
+		case Type::Soldier:
+			buttonTooltipLeftText = "Transfer";
+			buttonTooltipRightText = "Transfer";
+			break;
+		default:
+			buttonTooltipLeftText = marketOnRight ? "Buy" : "Sell";
+			buttonTooltipRightText = marketOnRight ? "Sell" : "Buy";
+			break;
+	}
 	auto buttonScrollLeft = control->createChild<GraphicButton>(nullptr, scrollLeft);
 	buttonScrollLeft->Size = scrollLeft->size;
 	buttonScrollLeft->Location = {87, 24};
-	buttonScrollLeft->ScrollBarPrev = control->scrollBar;
+	buttonScrollLeft->ToolTipText = buttonTooltipLeftText;
+	buttonScrollLeft->ScrollBarPrevHorizontal = control->scrollBar;
+
 	auto buttonScrollRight = control->createChild<GraphicButton>(nullptr, scrollRight);
 	buttonScrollRight->Size = scrollRight->size;
 	buttonScrollRight->Location = {247, 24};
-	buttonScrollRight->ScrollBarNext = control->scrollBar;
+	buttonScrollRight->ToolTipText = buttonTooltipRightText;
+	buttonScrollRight->ScrollBarNextHorizontal = control->scrollBar;
 	// Callback
 	control->setupCallbacks();
 	// Finally set the values
@@ -690,7 +723,8 @@ TransactionControl::createControl(const UString &id, Type type, const UString &n
 
 void TransactionControl::setupCallbacks()
 {
-	std::function<void(FormsEvent * e)> onScrollChange = [this](FormsEvent *) {
+	std::function<void(FormsEvent * e)> onScrollChange = [this](FormsEvent *)
+	{
 		if (!this->suspendUpdates)
 		{
 			this->updateValues();
@@ -782,8 +816,7 @@ void TransactionControl::postRender()
 
 	// Draw shade if inactive
 	static Vec2<int> shadePos = {0, 0};
-	if (tradeState.getLeftIndex() == tradeState.getRightIndex() ||
-	    (tradeState.getLeftStock() == 0 && tradeState.getRightStock() == 0))
+	if (!tradeState.isActive())
 	{
 		fw().renderer->draw(transactionShade, shadePos);
 	}

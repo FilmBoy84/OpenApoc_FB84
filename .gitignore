@@ -80,7 +80,7 @@ CMakeSettings.json
 [Dd]ata/UFOPAEDI/
 [Dd]ata/MUSIC
 [Dd]ata/cd.iso
-[Dd]ata/XCOM.BIN
+[Dd]ata/[Xx][Cc][Oo][Mm].[Bb][Ii][Nn]
 [Dd]ata.old/
 [Dd]ata/mods/
 
@@ -95,6 +95,7 @@ save.zip
 openapoc_log.txt
 version.h
 saves/
+/log.txt
 
 # Vim swap files
 .*.swp
@@ -133,3 +134,7 @@ OpenApoc_settings.conf
 openapoc.trace
 # My personal dataz
 tools/extractors/docs/video.txt
+
+# CLion temp files
+.idea
+cmake-build-*

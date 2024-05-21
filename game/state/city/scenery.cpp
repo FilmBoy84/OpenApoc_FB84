@@ -67,7 +67,6 @@ bool Scenery::attachToSomething()
 	auto pos = tileObject->getOwningTile()->position;
 	supportHardness = -10;
 	auto &map = tileObject->map;
-	auto tileType = tileObject->getType();
 	auto thisPtr = shared_from_this();
 
 	int startX = pos.x - 1;
@@ -118,7 +117,6 @@ bool Scenery::findSupport(bool allowClinging)
 		return true;
 	}
 	auto &map = tileObject->map;
-	auto tileType = tileObject->getType();
 	auto thisPtr = shared_from_this();
 
 	// Forward lookup for adding increments
@@ -976,7 +974,7 @@ bool Scenery::findSupport(bool allowClinging)
 
 		for (auto &list : incrementsList)
 		{
-			bool found;
+			bool found = false;
 			for (auto &increment : list)
 			{
 				found = false;
@@ -1198,7 +1196,7 @@ bool Scenery::handleCollision(GameState &state, Collision &c)
 		updateRelationWithAttacker(state, attackerOrg, false);
 		bool intentional =
 		    c.projectile->manualFire || (!c.projectile->firerVehicle->missions.empty() &&
-		                                 c.projectile->firerVehicle->missions.front()->type ==
+		                                 c.projectile->firerVehicle->missions.front().type ==
 		                                     VehicleMission::MissionType::AttackBuilding);
 		if (intentional || config().getBool("OpenApoc.NewFeature.ScrambleOnUnintentionalHit"))
 		{
@@ -1312,6 +1310,9 @@ void Scenery::die(GameState &state, bool forced)
 								vehiclesToDamage.push_back(v);
 								break;
 							}
+							default:
+								// Other tiles don't get damaged or block smoke
+								break;
 						}
 					}
 					for (auto &v : vehiclesToDamage)
@@ -1634,12 +1635,13 @@ bool Scenery::canRepair() const
 void Scenery::repair(GameState &state)
 {
 	auto &map = *city->map;
-	if (this->isAlive())
+	if (this->isAlive() && !damaged)
 	{
 		LogError("Trying to fix something that isn't broken");
 	}
 	damaged = false;
 	falling = false;
+	destroyed = false;
 	if (tileObject)
 	{
 		tileObject->removeFromMap();
@@ -1662,6 +1664,10 @@ void Scenery::repair(GameState &state)
 	if (building && !type->commonProperty)
 	{
 		building->buildingPartChange(state, initialPosition, true);
+	}
+	if (this->type && this->type->tile_type == SceneryTileType::TileType::Road)
+	{
+		state.current_city->notifyRoadChange(this->getPosition(), true);
 	}
 	map.clearPathCaches();
 }

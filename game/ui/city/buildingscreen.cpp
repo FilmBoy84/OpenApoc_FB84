@@ -31,7 +31,8 @@ std::shared_future<void> loadBattleBuilding(sp<GameState> state, sp<Building> bu
                                             StateRef<Vehicle> playerVehicle)
 {
 	auto loadTask = fw().threadPoolEnqueue(
-	    [hotseat, building, state, raid, playerAgents, playerVehicle]() mutable -> void {
+	    [hotseat, building, state, raid, playerAgents, playerVehicle]() mutable -> void
+	    {
 		    StateRef<Organisation> org = raid ? building->owner : state->getAliens();
 		    StateRef<Building> bld = {state.get(), building};
 
@@ -82,9 +83,10 @@ void BuildingScreen::eventOccurred(Event *e)
 
 	if (e->type() == EVENT_KEY_DOWN)
 	{
-		if (e->keyboard().KeyCode == SDLK_ESCAPE)
+		if (e->keyboard().KeyCode == SDLK_ESCAPE || e->keyboard().KeyCode == SDLK_RETURN ||
+		    e->keyboard().KeyCode == SDLK_KP_ENTER)
 		{
-			fw().stageQueueCommand({StageCmd::Command::POP});
+			menuform->findControl("BUTTON_QUIT")->click();
 			return;
 		}
 	}
@@ -99,7 +101,7 @@ void BuildingScreen::eventOccurred(Event *e)
 		if (e->forms().RaisedBy->Name == "BUTTON_EXTERMINATE" ||
 		    e->forms().RaisedBy->Name == "BUTTON_RAID")
 		{
-			if (!building->isAlive(*state))
+			if (!building->isAlive())
 			{
 				fw().stageQueueCommand(
 				    {StageCmd::Command::PUSH,

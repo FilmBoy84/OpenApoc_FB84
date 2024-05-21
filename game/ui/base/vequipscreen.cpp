@@ -24,6 +24,7 @@
 #include "game/ui/general/vehiclesheet.h"
 #include "library/strings_format.h"
 #include <cmath>
+#include <game/ui/general/messagebox.h>
 
 namespace OpenApoc
 {
@@ -50,10 +51,12 @@ VEquipScreen::VEquipScreen(sp<GameState> state)
 	    paperDollPlaceholder->Location, paperDollPlaceholder->Size, EQUIP_GRID_SLOT_SIZE);
 
 	// when hovering the paperdoll, display the selected vehicle stats
-	paperDoll->addCallback(FormEventType::MouseEnter, [this](FormsEvent *e [[maybe_unused]]) {
-		highlightedVehicle = selected;
-		VehicleSheet(formVehicleItem).display(selected);
-	});
+	paperDoll->addCallback(FormEventType::MouseEnter,
+	                       [this](FormsEvent *e [[maybe_unused]])
+	                       {
+		                       highlightedVehicle = selected;
+		                       VehicleSheet(formVehicleItem).display(selected);
+	                       });
 
 	for (auto &v : state->vehicles)
 	{
@@ -65,28 +68,29 @@ VEquipScreen::VEquipScreen(sp<GameState> state)
 		VehicleSheet(formVehicleItem).display(vehicle);
 		break;
 	}
-	if (!this->selected)
-	{
-		LogError("No vehicles found - the original apoc didn't open the equip screen in this case");
-	}
 
 	// Vehicle name edit
 	form->findControlTyped<TextEdit>("TEXT_VEHICLE_NAME")
-	    ->addCallback(FormEventType::TextEditFinish, [this](FormsEvent *e) {
-		    if (this->selected)
-		    {
-			    this->selected->name =
-			        std::dynamic_pointer_cast<TextEdit>(e->forms().RaisedBy)->getText();
-		    }
-	    });
+	    ->addCallback(
+	        FormEventType::TextEditFinish,
+	        [this](FormsEvent *e)
+	        {
+		        if (this->selected)
+		        {
+			        this->selected->name =
+			            std::dynamic_pointer_cast<TextEdit>(e->forms().RaisedBy)->getText();
+		        }
+	        });
 	form->findControlTyped<TextEdit>("TEXT_VEHICLE_NAME")
-	    ->addCallback(FormEventType::TextEditCancel, [this](FormsEvent *e) {
-		    if (this->selected)
-		    {
-			    std::dynamic_pointer_cast<TextEdit>(e->forms().RaisedBy)
-			        ->setText(this->selected->name);
-		    }
-	    });
+	    ->addCallback(FormEventType::TextEditCancel,
+	                  [this](FormsEvent *e)
+	                  {
+		                  if (this->selected)
+		                  {
+			                  std::dynamic_pointer_cast<TextEdit>(e->forms().RaisedBy)
+			                      ->setText(this->selected->name);
+		                  }
+	                  });
 
 	this->paperDoll->setNonHighlightColour(EQUIP_GRID_COLOUR);
 	this->setHighlightedSlotType(EquipmentSlotType::VehicleWeapon);
@@ -109,12 +113,14 @@ void VEquipScreen::begin()
 
 		// when entering a selectbox item, display that vehicle's stats
 		graphic->addCallback(FormEventType::MouseEnter,
-		                     [this, vehicle](FormsEvent *e [[maybe_unused]]) {
+		                     [this, vehicle](FormsEvent *e [[maybe_unused]])
+		                     {
 			                     highlightedVehicle = vehicle;
 			                     VehicleSheet(formVehicleItem).display(vehicle);
 		                     });
 		vehicleSelectBox->addCallback(FormEventType::MouseLeave,
-		                              [this](FormsEvent *e [[maybe_unused]]) {
+		                              [this](FormsEvent *e [[maybe_unused]])
+		                              {
 			                              highlightedVehicle = selected;
 			                              VehicleSheet(formVehicleItem).display(selected);
 		                              });
@@ -173,15 +179,18 @@ void VEquipScreen::eventOccurred(Event *e)
 	{
 		if (form->findControlTyped<TextEdit>("TEXT_VEHICLE_NAME")->isFocused())
 			return;
-		if (e->keyboard().KeyCode == SDLK_ESCAPE)
+		if (e->keyboard().KeyCode == SDLK_ESCAPE || e->keyboard().KeyCode == SDLK_RETURN ||
+		    e->keyboard().KeyCode == SDLK_KP_ENTER)
 		{
-			fw().stageQueueCommand({StageCmd::Command::POP});
-			return;
-		}
-		if (e->keyboard().KeyCode == SDLK_RETURN)
-		{
-			form->findControl("BUTTON_OK")->click();
-			return;
+			if (EVENT_MOUSE_DOWN && draggedEquipment)
+			{
+				return;
+			}
+			else
+			{
+				form->findControl("BUTTON_OK")->click();
+				return;
+			}
 		}
 	}
 	if (e->type() == EVENT_FORM_INTERACTION && e->forms().EventFlag == FormEventType::MouseDown)
@@ -285,6 +294,21 @@ void VEquipScreen::eventOccurred(Event *e)
 		    std::dynamic_pointer_cast<VEquipment>(this->selected->getEquipmentAt(mouseSlotPos));
 		if (equipment)
 		{
+			// Check if a passenger module can be removed
+			if (this->highlightedVehicle->getPassengers() >
+			    (this->highlightedVehicle->getMaxPassengers() - equipment->type->passengers))
+			{
+				UString title(tr("EQUIPMENT IN USE"));
+				UString message(
+				    tr("Passenger module cannot be removed as it is currently in use."));
+
+				fw().stageQueueCommand(
+				    {StageCmd::Command::PUSH,
+				     mksp<MessageBox>(title, message, MessageBox::ButtonOptions::Ok)});
+
+				return;
+			}
+
 			// FIXME: base->addBackToInventory(item); vehicle->unequip(item);
 			this->draggedEquipment = equipment->type;
 			this->draggedEquipmentOffset = {0, 0};
@@ -316,6 +340,16 @@ void VEquipScreen::eventOccurred(Event *e)
 				if ((modifierLShift || modifierRShift) &&
 				    config().getBool("OpenApoc.NewFeature.AdvancedInventoryControls"))
 				{
+					if (!draggedEquipment->research_dependency.satisfied())
+					{
+						auto message_box = mksp<MessageBox>(
+						    tr("Alien Artifact"),
+						    tr("You must research Alien technology before you can use it."),
+						    MessageBox::ButtonOptions::Ok);
+						fw().stageQueueCommand({StageCmd::Command::PUSH, message_box});
+						this->draggedEquipment = nullptr;
+						return;
+					}
 					auto e = this->selected->addEquipment(*state, this->draggedEquipment);
 					if (e)
 					{
@@ -342,6 +376,16 @@ void VEquipScreen::eventOccurred(Event *e)
 			equipmentGridPos /= EQUIP_GRID_SLOT_SIZE;
 			if (this->selected->canAddEquipment(equipmentGridPos, this->draggedEquipment))
 			{
+				if (!draggedEquipment->research_dependency.satisfied())
+				{
+					auto message_box = mksp<MessageBox>(
+					    tr("Alien Artifact"),
+					    tr("You must research Alien technology before you can use it."),
+					    MessageBox::ButtonOptions::Ok);
+					fw().stageQueueCommand({StageCmd::Command::PUSH, message_box});
+					this->draggedEquipment = nullptr;
+					return;
+				}
 				if (base->inventoryVehicleEquipment[draggedEquipment->id] <= 0)
 				{
 					LogError("Trying to equip item \"%s\" with zero inventory",
@@ -353,7 +397,7 @@ void VEquipScreen::eventOccurred(Event *e)
 				this->paperDoll->updateEquipment();
 				// FIXME: Add ammo to equipment
 			}
-			this->draggedEquipment = "";
+			this->draggedEquipment = nullptr;
 		}
 	}
 }
@@ -438,7 +482,8 @@ void VEquipScreen::render()
 
 			Vec2<int> countLabelPosition = inventoryPosition;
 			countLabelPosition.y += INVENTORY_COUNT_Y_GAP + equipmentImage->size.y;
-			// FIXME: Center in X?
+			countLabelPosition.x += equipmentImage->size.x / 2 - countImage->size.x / 2;
+
 			fw().renderer->draw(countImage, countLabelPosition);
 
 			Vec2<int> inventoryEndPosition = inventoryPosition;

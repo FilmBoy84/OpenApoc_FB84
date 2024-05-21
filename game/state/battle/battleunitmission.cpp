@@ -121,10 +121,10 @@ BattleUnitType BattleUnitTileHelper::getType() const
 bool BattleUnitTileHelper::canEnterTile(Tile *from, Tile *to, bool ignoreStaticUnits,
                                         bool ignoreMovingUnits, bool ignoreAllUnits) const
 {
-	float nothing;
-	bool none1;
-	bool none2;
-	return canEnterTile(from, to, false, none1, nothing, none2, ignoreStaticUnits,
+	float cost = 0.0;
+	bool jumped = false;
+	bool doorInTheWay = false;
+	return canEnterTile(from, to, false, jumped, cost, doorInTheWay, ignoreStaticUnits,
 	                    ignoreMovingUnits, ignoreAllUnits);
 }
 
@@ -1806,8 +1806,8 @@ void BattleUnitMission::start(GameState &state, BattleUnit &u)
 
 				// Teleport unit
 				// Remove all other missions
-				u.missions.remove_if(
-				    [this](const up<BattleUnitMission> &mission) { return mission.get() != this; });
+				u.missions.remove_if([this](const up<BattleUnitMission> &mission)
+				                     { return mission.get() != this; });
 				u.stopAttacking();
 				u.setPosition(state, t->getRestingPosition(u.isLarge()), true);
 				u.resetGoal();
@@ -2055,6 +2055,14 @@ void BattleUnitMission::setPathTo(GameState &state, BattleUnit &u, Vec3<int> tar
 		auto path = state.current_battle->findShortestPath(
 		    u.goalPosition, target, BattleUnitTileHelper{map, u}, approachOnly, demandGiveWay,
 		    !blockedByMovingUnit);
+
+		// Cancel movement if the closest path ends at the current position
+		if (path.size() == 1 && path.back() == Vec3<int>{u.position})
+		{
+			LogInfo("Cannot move to %s, closest path ends at origin", Vec3<int>{u.goalPosition});
+			cancelled = true;
+			return;
+		}
 
 		// Always start with the current position
 		this->currentPlannedPath.push_back(u.goalPosition);

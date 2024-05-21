@@ -4,7 +4,6 @@ PROJECT(OpenApoc_Framework CXX C)
 # check cmake version
 CMAKE_MINIMUM_REQUIRED(VERSION 3.9)
 
-option(BACKTRACE_ON_ERROR "Print backtrace on logging an error (Requires libunwind on linux, no extra dependencies on windows)" ON)
 option(DIALOG_ON_ERROR "Pop up a dialog box showing errors" ON)
 
 
@@ -15,6 +14,7 @@ set (FRAMEWORK_SOURCE_FILES
 	font.cpp
 	framework.cpp
 	image.cpp
+	jukebox.cpp
 	logger.cpp
 	luaframework.cpp
 	palette.cpp
@@ -26,7 +26,6 @@ set (FRAMEWORK_SOURCE_FILES
 	serialization/providers/zipdataprovider.cpp
 	sound.cpp
 	stagestack.cpp
-	trace.cpp
 	video/smk.cpp
 	logger_sdldialog.cpp
 	logger_file.cpp
@@ -46,6 +45,7 @@ set (FRAMEWORK_HEADER_FILES
 	fs.h
 	image.h
 	imageloader_interface.h
+	jukebox.h
 	keycodes.h
 	logger.h
 	luaframework.h
@@ -63,13 +63,12 @@ set (FRAMEWORK_HEADER_FILES
 	sound_interface.h
 	stage.h
 	stagestack.h
-	trace.h
 	ThreadPool/ThreadPool.h
 	video.h
 	logger_sdldialog.h
 	logger_file.h
 	options.h
-	modinfo.h)
+	modinfo.h translation.h)
 
 source_group(framework\\headers FILES ${FRAMEWORK_HEADER_FILES})
 list(APPEND ALL_HEADER_FILES ${FRAMEWORK_HEADER_FILES})
@@ -129,7 +128,8 @@ source_group(framework\\sampleloader\\headers FILES
 list(APPEND ALL_HEADER_FILES ${SAMPLELOADER_HEADER_FILES})
 
 set (MUSICLOADER_SOURCE_FILES
-	musicloader/music.cpp)
+	musicloader/music.cpp
+	musicloader/vorbis.cpp)
 
 source_group(framework\\musicloader\\sources FILES
 		${MUSICLOADER_SOURCE_FILES})
@@ -207,7 +207,6 @@ if(APPLE)
 	# OSX doesn't seem to support the c++11 'thread_local' keyword
 	target_compile_definitions(OpenApoc_Framework PRIVATE
 			"-DBROKEN_THREAD_LOCAL")
-	SET(BACKTRACE_ON_ERROR ON)
 elseif(WIN32)
 	target_compile_definitions(OpenApoc_Framework PRIVATE "-DGLESWRAP_PLATFORM_WGL")
 else()
@@ -221,29 +220,7 @@ set(BOOST_PACKAGES locale system program_options)
 # Arbitrary version that I remember testing previously
 set(BOOST_VERSION 1.50)
 
-set(USE_STD_FILESYSTEM FALSE)
-
-if(CMAKE_COMPILER_IS_GNUCC)
-    if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 8.0)
-			set(USE_STD_FILESYSTEM TRUE)
-	endif()
-endif()
-if(MSVC)
-	if (MSVC_VERSION GREATER_EQUAL 1910)
-		set(USE_STD_FILESYSTEM TRUE)
-	endif()
-endif()
-
-if(USE_STD_FILESYSTEM)
-    message(STATUS "Using <filesystem>")
-	target_compile_definitions(OpenApoc_Framework PUBLIC "-DUSE_STD_FILESYSTEM")
-else()
-	message(STATUS "Using <boost/filesystem>")
-	set(BOOST_PACKAGES ${BOOST_PACKAGES} filesystem)
-	# filesystem::relative() didn't exist until 1.60 from what I can see in the docs
-	set(BOOST_VERSION 1.60)
-	target_compile_definitions(OpenApoc_Framework PUBLIC "-DUSE_BOOST_FILESYSTEM")
-endif()
+target_compile_definitions(OpenApoc_Framework PUBLIC "-DUSE_STD_FILESYSTEM")
 
 find_package(Boost ${BOOST_VERSION} REQUIRED COMPONENTS ${BOOST_PACKAGES})
 target_link_libraries(OpenApoc_Framework PUBLIC ${Boost_LIBRARIES})
@@ -281,36 +258,15 @@ else()
 	target_include_directories(OpenApoc_Framework PUBLIC ${PC_SDL2_INCLUDE_DIRS})
 endif()
 
+find_path(VORBIS_INCLUDE_DIR vorbis/vorbisfile.h)
+find_library(VORBISFILE_LIBRARY vorbisfile)
+
+target_include_directories(OpenApoc_Framework PRIVATE ${VORBIS_INCLUDE_DIR})
+target_link_libraries(OpenApoc_Framework PRIVATE ${VORBISFILE_LIBRARY})
+
 # Dialog is handled by SDL2
 if(DIALOG_ON_ERROR)
 	target_compile_definitions(OpenApoc_Framework PUBLIC -DERROR_DIALOG)
-endif()
-
-# Backtrace required libunwind
-if(BACKTRACE_ON_ERROR)
-	if(WIN32)
-		target_link_libraries(OpenApoc_Framework PUBLIC dbghelp)
-	elseif(APPLE)
-		# MacOS always has libunwind with no extra libs needed
-		target_compile_definitions(OpenApoc_Framework PUBLIC -DBACKTRACE_LIBUNWIND)
-	else()
-		find_package(PkgConfig)
-		pkg_check_modules(PC_UNWIND libunwind)
-		if (NOT PC_UNWIND_FOUND)
-			#Ubuntu 12.04 libunwind doesn't have a pkgconfig - try 'current' paths anyway
-			find_path(UNWIND_INCLUDE_DIR libunwind.h HINTS ${FRAMEWORK_INCLUDE_DIRS})
-			if (NOT UNWIND_INCLUDE_DIR)
-					message(FATAL_ERROR "Libunwind not found")
-			endif()
-			target_link_libraries(OpenApoc_Framework PUBLIC unwind dl)
-			#HACK - this assumes the library path is already searched?
-		else()
-			find_path(UNWIND_INCLUDE_DIR libunwind.h HINTS ${PC_UNWIND_INCLUDEDIR})
-			target_link_libraries(OpenApoc_Framework PUBLIC ${PC_UNWIND_LIBRARIES} dl)
-		endif()
-		target_compile_definitions(OpenApoc_Framework PUBLIC -DBACKTRACE_LIBUNWIND)
-		target_include_directories(OpenApoc_Framework PUBLIC ${UNWIND_INCLUDE_DIR})
-	endif()
 endif()
 
 # OpenGL is required for any renderer
@@ -328,7 +284,11 @@ target_link_libraries(OpenApoc_Framework PUBLIC OpenApoc_LibLodepng)
 target_link_libraries(OpenApoc_Framework PUBLIC OpenApoc_Miniz)
 target_link_libraries(OpenApoc_Framework PUBLIC ${CMAKE_DL_LIBS})
 
-target_link_libraries(OpenApoc_Framework PUBLIC physfs-static)
+if(USE_SYSTEM_PHYSFS)
+	target_link_libraries(OpenApoc_Framework PUBLIC ${PHYSFS_LIBRARY})
+else()
+	target_link_libraries(OpenApoc_Framework PUBLIC physfs-static)
+endif()
 
 target_include_directories(OpenApoc_Framework PRIVATE
 		${CMAKE_SOURCE_DIR}/dependencies/physfs/src)

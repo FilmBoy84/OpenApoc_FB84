@@ -5,6 +5,7 @@
 #include "game/state/gameeventtypes.h"
 #include "game/state/gametime.h"
 #include "game/state/luagamestate.h"
+#include "game/state/rules/city/organisationraid.h"
 #include "game/state/shared/agent.h"
 #include "game/state/stateobject.h"
 #include "library/sp.h"
@@ -61,7 +62,9 @@ class GameScore
 	int craftShotDownXCom = 0;
 	int incursions = 0;
 	int cityDamage = 0;
-	int getTotal();
+
+	int getTotal() const;
+	void reset();
 	//	UString getText();
 };
 
@@ -104,8 +107,11 @@ class GameState : public std::enable_shared_from_this<GameState>
 	StateRefMap<BattleMapPartType> battleMapTiles;
 
 	std::list<EventMessage> messages;
+	std::list<EventMessage> cityMessages;
 
+	int baseIndex = 1;
 	int difficulty = 0;
+	bool fundingTerminated = false;
 	bool firstDetection = false;
 	uint64_t nextInvasion = 0;
 
@@ -113,7 +119,13 @@ class GameState : public std::enable_shared_from_this<GameState>
 	StateRefMap<AgentBodyType> agent_body_types;
 	StateRefMap<AgentEquipmentLayout> agent_equipment_layouts;
 	StateRefMap<Agent> agents;
+	std::set<UString> agentsDeathNote;
 	AgentGenerator agent_generator;
+	OrganisationRaid organisation_raid_rules;
+
+	std::vector<std::pair<int, int>> weekly_rating_rules;
+	std::map<AgentType::Role, int> agent_salary;
+	std::map<AgentType::Role, int> agent_fired_penalty;
 
 	std::map<AgentType::Role, unsigned> initial_agents;
 	std::map<UString, unsigned> initial_facilities;
@@ -242,6 +254,10 @@ class GameState : public std::enable_shared_from_this<GameState>
 	void updateEndOfDay();
 	void updateEndOfWeek();
 
+	void updateHumanEconomy();
+	void weeklyPlayerUpdate();
+	int calculateFundingModifier() const;
+
 	void logEvent(GameEvent *ev);
 
 	// Following members are not serialized
@@ -253,6 +269,9 @@ class GameState : public std::enable_shared_from_this<GameState>
 	// Loads all mods set in the options - note this likely requires the mod data directories to
 	// already be added to the filesystem
 	void loadMods();
+	// appends a GameState package from "submodPath", relative to the currently set data directories
+	// Returns true on success, false on failure
+	bool appendGameState(const UString &gamestatePath);
 };
 
 }; // namespace OpenApoc

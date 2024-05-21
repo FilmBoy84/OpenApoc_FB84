@@ -70,27 +70,23 @@ UString GameTime::getLongDateString() const
 		apoc_date_facet *dateFacet = new apoc_date_facet("%A, %E %B, %Y");
 		DATE_LONG_FORMAT = new std::locale(std::locale::classic(), dateFacet);
 
-		std::vector<std::string> months = {
-		    tr("January").str(), tr("February").str(), tr("March").str(),
-		    tr("April").str(),   tr("May").str(),      tr("June").str(),
-		    tr("July").str(),    tr("August").str(),   tr("September").str(),
-		    tr("October").str(), tr("November").str(), tr("December").str()};
+		std::vector<std::string> months = {tr("January"), tr("February"), tr("March"),
+		                                   tr("April"),   tr("May"),      tr("June"),
+		                                   tr("July"),    tr("August"),   tr("September"),
+		                                   tr("October"), tr("November"), tr("December")};
 		dateFacet->long_month_names(months);
 
-		std::vector<std::string> weekdays = {
-		    tr("Sunday").str(),   tr("Monday").str(), tr("Tuesday").str(), tr("Wednesday").str(),
-		    tr("Thursday").str(), tr("Friday").str(), tr("Saturday").str()};
+		std::vector<std::string> weekdays = {tr("Sunday"),    tr("Monday"),   tr("Tuesday"),
+		                                     tr("Wednesday"), tr("Thursday"), tr("Friday"),
+		                                     tr("Saturday")};
 		dateFacet->long_weekday_names(weekdays);
 
 		std::vector<std::string> days = {
-		    tr("1st").str(),  tr("2nd").str(),  tr("3rd").str(),  tr("4th").str(),
-		    tr("5th").str(),  tr("6th").str(),  tr("7th").str(),  tr("8th").str(),
-		    tr("9th").str(),  tr("10th").str(), tr("11th").str(), tr("12th").str(),
-		    tr("13th").str(), tr("14th").str(), tr("15th").str(), tr("16th").str(),
-		    tr("17th").str(), tr("18th").str(), tr("19th").str(), tr("20th").str(),
-		    tr("21st").str(), tr("22nd").str(), tr("23rd").str(), tr("24th").str(),
-		    tr("25th").str(), tr("26th").str(), tr("27th").str(), tr("28th").str(),
-		    tr("29th").str(), tr("30th").str(), tr("31st").str()};
+		    tr("1st"),  tr("2nd"),  tr("3rd"),  tr("4th"),  tr("5th"),  tr("6th"),  tr("7th"),
+		    tr("8th"),  tr("9th"),  tr("10th"), tr("11th"), tr("12th"), tr("13th"), tr("14th"),
+		    tr("15th"), tr("16th"), tr("17th"), tr("18th"), tr("19th"), tr("20th"), tr("21st"),
+		    tr("22nd"), tr("23rd"), tr("24th"), tr("25th"), tr("26th"), tr("27th"), tr("28th"),
+		    tr("29th"), tr("30th"), tr("31st")};
 		dateFacet->longDayNames(days);
 	}
 	ss.imbue(*DATE_LONG_FORMAT);
@@ -106,22 +102,18 @@ UString GameTime::getShortDateString() const
 		apoc_date_facet *dateFacet = new apoc_date_facet("%E %B, %Y");
 		DATE_SHORT_FORMAT = new std::locale(std::locale::classic(), dateFacet);
 
-		std::vector<std::string> months = {
-		    tr("January").str(), tr("February").str(), tr("March").str(),
-		    tr("April").str(),   tr("May").str(),      tr("June").str(),
-		    tr("July").str(),    tr("August").str(),   tr("September").str(),
-		    tr("October").str(), tr("November").str(), tr("December").str()};
+		std::vector<std::string> months = {tr("January"), tr("February"), tr("March"),
+		                                   tr("April"),   tr("May"),      tr("June"),
+		                                   tr("July"),    tr("August"),   tr("September"),
+		                                   tr("October"), tr("November"), tr("December")};
 		dateFacet->long_month_names(months);
 
 		std::vector<std::string> days = {
-		    tr("1st").str(),  tr("2nd").str(),  tr("3rd").str(),  tr("4th").str(),
-		    tr("5th").str(),  tr("6th").str(),  tr("7th").str(),  tr("8th").str(),
-		    tr("9th").str(),  tr("10th").str(), tr("11th").str(), tr("12th").str(),
-		    tr("13th").str(), tr("14th").str(), tr("15th").str(), tr("16th").str(),
-		    tr("17th").str(), tr("18th").str(), tr("19th").str(), tr("20th").str(),
-		    tr("21st").str(), tr("22nd").str(), tr("23rd").str(), tr("24th").str(),
-		    tr("25th").str(), tr("26th").str(), tr("27th").str(), tr("28th").str(),
-		    tr("29th").str(), tr("30th").str(), tr("31st").str()};
+		    tr("1st"),  tr("2nd"),  tr("3rd"),  tr("4th"),  tr("5th"),  tr("6th"),  tr("7th"),
+		    tr("8th"),  tr("9th"),  tr("10th"), tr("11th"), tr("12th"), tr("13th"), tr("14th"),
+		    tr("15th"), tr("16th"), tr("17th"), tr("18th"), tr("19th"), tr("20th"), tr("21st"),
+		    tr("22nd"), tr("23rd"), tr("24th"), tr("25th"), tr("26th"), tr("27th"), tr("28th"),
+		    tr("29th"), tr("30th"), tr("31st")};
 		dateFacet->longDayNames(days);
 	}
 	ss.imbue(*DATE_SHORT_FORMAT);
@@ -131,19 +123,89 @@ UString GameTime::getShortDateString() const
 
 UString GameTime::getWeekString() const { return format("%s %d", tr("Week"), getWeek()); }
 
+unsigned int GameTime::getMonth() const
+{
+	const date currentDate = getPtime(this->ticks).date();
+
+	const int months = (currentDate.year() - GAME_START.date().year()) * 12 + currentDate.month() -
+	                   GAME_START.date().month();
+	return months;
+}
+
 unsigned int GameTime::getWeek() const
 {
-	date firstMonday = previous_weekday(GAME_START.date(), greg_weekday(Monday));
-	date lastMonday = previous_weekday(getPtime(this->ticks).date(), greg_weekday(Monday));
-	date_duration duration = lastMonday - firstMonday;
+	const date firstMonday = previous_weekday(GAME_START.date(), greg_weekday(Monday));
+	const date lastMonday = previous_weekday(getPtime(this->ticks).date(), greg_weekday(Monday));
+	const date_duration duration = lastMonday - firstMonday;
 	return duration.days() / 7 + 1;
 }
 
-unsigned int GameTime::getDay() const { return getPtime(this->ticks).date().day(); }
+unsigned int GameTime::getFirstDayOfCurrentWeek() const
+{
+	const date today = getPtime(this->ticks).date();
+
+	// The boost library calculates the first day of the week as Sunday (day_of_week = 0)
+	// The game instead consider it as Monday (day_of_week = 1)
+	if (today.day_of_week() == 1) // Monday
+		return today.year_month_day().day;
+	else
+	{
+		unsigned short days_to_monday = today.day_of_week() - 1;
+		if (today.day_of_week() == 0) // Sunday
+			days_to_monday = 6;
+
+		const date first_day_of_week = today - days(days_to_monday);
+		return first_day_of_week.year_month_day().day;
+	}
+}
+
+unsigned int GameTime::getLastDayOfCurrentWeek() const
+{
+	const unsigned short dayOfWeek = getPtime(this->ticks).date().day_of_week();
+	unsigned int daysBeforeWeekEnd = 7 - dayOfWeek;
+	if (dayOfWeek == 0) // Already sunday
+		daysBeforeWeekEnd = 0;
+
+	return getPtime(this->ticks + (daysBeforeWeekEnd * TICKS_PER_DAY)).date().year_month_day().day;
+}
+
+unsigned int GameTime::getLastDayOfCurrentMonth() const
+{
+	return getPtime(this->ticks).date().end_of_month().year_month_day().day;
+}
+
+unsigned int GameTime::getDay() const { return (this->ticks + TICKS_PER_DAY) / TICKS_PER_DAY; }
+
+unsigned int GameTime::getMonthDay() const
+{
+	return getPtime(this->ticks).date().year_month_day().day;
+}
 
 unsigned int GameTime::getHours() const { return getPtime(this->ticks).time_of_day().hours(); }
 
 unsigned int GameTime::getMinutes() const { return getPtime(this->ticks).time_of_day().minutes(); }
+
+unsigned int GameTime::getSeconds() const { return getPtime(this->ticks).time_of_day().seconds(); }
+
+unsigned int GameTime::getTicksBetween(unsigned int fromDays, unsigned int fromHours,
+                                       unsigned int fromMinutes, unsigned int fromSeconds,
+                                       unsigned int toDays, unsigned int toHours,
+                                       unsigned int toMinutes, unsigned int toSeconds) const
+{
+	if (fromDays <= toDays && fromHours <= toHours && fromMinutes <= toMinutes &&
+	    fromSeconds < toSeconds)
+	{
+		unsigned int days_diff_in_ticks = (toDays - fromDays) * TICKS_PER_DAY;
+		unsigned int hours_diff_in_ticks = (toHours - fromHours) * TICKS_PER_HOUR;
+		unsigned int minutes_diff_in_ticks = (toMinutes - fromMinutes) * TICKS_PER_MINUTE;
+		unsigned int seconds_diff_in_ticks = (toSeconds - fromSeconds) * TICKS_PER_SECOND;
+
+		return days_diff_in_ticks + hours_diff_in_ticks + minutes_diff_in_ticks +
+		       seconds_diff_in_ticks;
+	}
+	else
+		return 0;
+}
 
 uint64_t GameTime::getTicks() const { return ticks; }
 
@@ -184,7 +246,8 @@ void GameTime::addTicks(uint64_t ticks)
 			{
 				uint64_t days = this->ticks / TICKS_PER_DAY;
 				dayPassedFlag = true;
-				if (days % 7 == 0)
+				// game starts on Tuesday, so week rolls on day 6
+				if (days % 7 == 6)
 				{
 					weekPassedFlag = true;
 				}

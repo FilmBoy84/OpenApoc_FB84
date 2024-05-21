@@ -4,7 +4,6 @@
 #include "framework/image.h"
 #include "framework/serialization/serialize.h"
 #include "framework/sound.h"
-#include "framework/trace.h"
 #include "game/state/battle/ai/aitype.h"
 #include "game/state/battle/ai/tacticalaivanilla.h"
 #include "game/state/battle/ai/unitaibehavior.h"
@@ -70,6 +69,8 @@
 
 namespace OpenApoc
 {
+
+static const UString DELETE_OP_ATTRIBUTE = "delete";
 
 template <typename T> bool operator==(const StateRefMap<T> &a, const StateRefMap<T> &b)
 {
@@ -219,13 +220,32 @@ void serializeIn(const GameState *state, SerializationNode *node, std::map<Key, 
 {
 	if (!node)
 		return;
+
+	const auto delete_map = (node->getAttribute("op") == DELETE_OP_ATTRIBUTE);
+	if (delete_map)
+	{
+		map.clear();
+	}
 	auto entry = node->getNodeOpt("entry");
 	while (entry)
 	{
 		Key key;
-		serializeIn(state, entry->getNodeReq("key"), key);
-		auto &value = map[key];
-		serializeIn(state, entry->getNodeReq("value"), value);
+		const auto keyNode = entry->getNodeReq("key");
+		serializeIn(state, keyNode, key);
+
+		const auto delete_node = (entry->getAttribute("op") == DELETE_OP_ATTRIBUTE);
+
+		if (delete_node)
+		{
+			map.erase(key);
+		}
+
+		const auto valueNode = entry->getNodeOpt("value");
+		if (valueNode)
+		{
+			auto &value = map[key];
+			serializeIn(state, valueNode, value);
+		}
 
 		entry = entry->getNextSiblingOpt("entry");
 	}
@@ -237,13 +257,31 @@ void serializeInSectionMap(const GameState *state, SerializationNode *node,
 {
 	if (!node)
 		return;
+	const auto delete_map = (node->getAttribute("op") == DELETE_OP_ATTRIBUTE);
+	if (delete_map)
+	{
+		map.clear();
+	}
 	auto entry = node->getNodeOpt("entry");
 	while (entry)
 	{
 		UString key;
-		serializeIn(state, entry->getNodeReq("key"), key);
-		auto &value = map[key];
-		serializeIn(state, entry->getSectionReq(key.cStr()), value);
+		const auto keyNode = entry->getNodeReq("key");
+		serializeIn(state, keyNode, key);
+
+		const auto delete_node = (entry->getAttribute("op") == DELETE_OP_ATTRIBUTE);
+		if (delete_node)
+		{
+			map.erase(key);
+		}
+
+		const auto sectionNode = entry->getSectionOpt(key.c_str());
+		if (sectionNode)
+		{
+
+			auto &value = map[key];
+			serializeIn(state, sectionNode, value);
+		}
 
 		entry = entry->getNextSiblingOpt("entry");
 	}
@@ -255,13 +293,31 @@ void serializeIn(const GameState *state, SerializationNode *node, std::map<Key, 
 {
 	if (!node)
 		return;
+	const auto delete_map = (node->getAttribute("op") == DELETE_OP_ATTRIBUTE);
+	if (delete_map)
+	{
+		map.clear();
+	}
 	auto entry = node->getNodeOpt("entry");
 	while (entry)
 	{
 		Key key = {};
-		serializeIn(state, entry->getNodeReq("key"), key, keyMap);
-		auto &value = map[key];
-		serializeIn(state, entry->getNodeReq("value"), value);
+		const auto keyNode = entry->getNodeReq("key");
+		serializeIn(state, keyNode, key);
+
+		const auto delete_node = (entry->getAttribute("op") == DELETE_OP_ATTRIBUTE);
+		if (delete_node)
+		{
+			map.erase(key);
+		}
+
+		const auto valueNode = entry->getNodeReq("value");
+		if (valueNode)
+		{
+
+			auto &value = map[key];
+			serializeIn(state, valueNode, value);
+		}
 
 		entry = entry->getNextSiblingOpt("entry");
 	}
@@ -281,6 +337,11 @@ void serializeIn(const GameState *state, SerializationNode *node, std::list<T> &
 {
 	if (!node)
 		return;
+	const auto delete_list = (node->getAttribute("op") == DELETE_OP_ATTRIBUTE);
+	if (delete_list)
+	{
+		list.clear();
+	}
 	auto entry = node->getNodeOpt("entry");
 	while (entry)
 	{
@@ -295,6 +356,11 @@ void serializeIn(const GameState *state, SerializationNode *node, std::vector<T>
 {
 	if (!node)
 		return;
+	const auto delete_vector = (node->getAttribute("op") == DELETE_OP_ATTRIBUTE);
+	if (delete_vector)
+	{
+		vector.clear();
+	}
 	auto entry = node->getNodeOpt("entry");
 	uint64_t sizeHint = 0;
 	serializeIn(state, node->getNodeOpt("sizeHint"), sizeHint);
@@ -317,12 +383,25 @@ void serializeIn(const GameState *state, SerializationNode *node, std::set<T> &s
 {
 	if (!node)
 		return;
+	const auto delete_set = (node->getAttribute("op") == DELETE_OP_ATTRIBUTE);
+	if (delete_set)
+	{
+		set.clear();
+	}
 	auto entry = node->getNodeOpt("entry");
 	while (entry)
 	{
 		T type = {};
 		serializeIn(state, entry, type);
-		set.insert(type);
+		const auto delete_entry = (entry->getAttribute("op") == DELETE_OP_ATTRIBUTE);
+		if (delete_entry)
+		{
+			set.erase(type);
+		}
+		else
+		{
+			set.insert(type);
+		}
 		entry = entry->getNextSiblingOpt("entry");
 	}
 }
@@ -395,7 +474,7 @@ template <typename T> void serializeOut(SerializationNode *node, const up<T> &pt
 			serializeOut(node, *ptr, *ref);
 		else
 		{
-			T defaultRef;
+			const T defaultRef{};
 			serializeOut(node, *ptr, defaultRef);
 		}
 	}
@@ -409,8 +488,11 @@ template <typename T> void serializeOut(SerializationNode *node, const sp<T> &pt
 			serializeOut(node, *ptr, *ref);
 		else
 		{
-			T defaultRef;
-			serializeOut(node, *ptr, defaultRef);
+			// Here we need to mksp<>, as type T may have a protected destructor (e.g.
+			// shared_from_this-enabled mobjects)
+
+			const sp<T> defaultRef = mksp<T>();
+			serializeOut(node, *ptr, *defaultRef);
 		}
 	}
 }
@@ -419,8 +501,14 @@ template <typename Key, typename Value>
 void serializeOut(SerializationNode *node, const std::map<Key, Value> &map,
                   const std::map<Key, Value> &ref)
 {
-	Key defaultKey;
-	Value defaultValue;
+	const Key defaultKey{};
+	const Value defaultValue{};
+
+	if (map.empty() && !ref.empty())
+	{
+		node->setAttribute("op", DELETE_OP_ATTRIBUTE);
+		return;
+	}
 	for (const auto &pair : map)
 	{
 		auto refIt = ref.find(pair.first);
@@ -444,13 +532,29 @@ void serializeOut(SerializationNode *node, const std::map<Key, Value> &map,
 			serializeOut(entry->addNode("value"), pair.second, defaultValue);
 		}
 	}
+	// Find any removed entries
+	for (const auto &pair : ref)
+	{
+		auto mapIt = map.find(pair.first);
+		if (mapIt == map.end())
+		{
+			auto entry = node->addNode("entry");
+			serializeOut(entry->addNode("key"), pair.first, defaultKey);
+			entry->setAttribute("op", DELETE_OP_ATTRIBUTE);
+		}
+	}
 }
 
 template <typename T>
 void serializeOut(SerializationNode *node, const StateRefMap<T> &map, const StateRefMap<T> &ref)
 {
-	UString defaultKey;
-	sp<T> defaultValue;
+	const UString defaultKey{};
+	const sp<T> defaultValue{};
+	if (map.empty() && !ref.empty())
+	{
+		node->setAttribute("op", DELETE_OP_ATTRIBUTE);
+		return;
+	}
 	for (const auto &pair : map)
 	{
 		auto refIt = ref.find(pair.first);
@@ -472,6 +576,17 @@ void serializeOut(SerializationNode *node, const StateRefMap<T> &map, const Stat
 			auto entry = node->addNode("entry");
 			serializeOut(entry->addNode("key"), pair.first, defaultKey);
 			serializeOut(entry->addNode("value"), pair.second, defaultValue);
+		}
+	}
+	// Find any removed entries
+	for (const auto &pair : ref)
+	{
+		auto mapIt = map.find(pair.first);
+		if (mapIt == map.end())
+		{
+			auto entry = node->addNode("entry");
+			serializeOut(entry->addNode("key"), pair.first, defaultKey);
+			entry->setAttribute("op", DELETE_OP_ATTRIBUTE);
 		}
 	}
 }
@@ -480,8 +595,13 @@ template <typename Value>
 void serializeOutSectionMap(SerializationNode *node, const std::map<UString, Value> &map,
                             const std::map<UString, Value> &ref)
 {
-	UString defaultKey;
-	Value defaultValue;
+	const UString defaultKey{};
+	const Value defaultValue{};
+	if (map.empty() && !ref.empty())
+	{
+		node->setAttribute("op", DELETE_OP_ATTRIBUTE);
+		return;
+	}
 	for (const auto &pair : map)
 	{
 		auto refIt = ref.find(pair.first);
@@ -491,7 +611,7 @@ void serializeOutSectionMap(SerializationNode *node, const std::map<UString, Val
 			{
 				auto entry = node->addNode("entry");
 				serializeOut(entry->addNode("key"), pair.first, defaultKey);
-				serializeOut(entry->addSection(pair.first.cStr()), pair.second, refIt->second);
+				serializeOut(entry->addSection(pair.first.c_str()), pair.second, refIt->second);
 			}
 			else
 			{
@@ -502,15 +622,33 @@ void serializeOutSectionMap(SerializationNode *node, const std::map<UString, Val
 		{
 			auto entry = node->addNode("entry");
 			serializeOut(entry->addNode("key"), pair.first, defaultKey);
-			serializeOut(entry->addSection(pair.first.cStr()), pair.second, defaultValue);
+			serializeOut(entry->addSection(pair.first.c_str()), pair.second, defaultValue);
+		}
+	}
+	// Find any removed entries
+	for (const auto &pair : ref)
+	{
+		auto mapIt = map.find(pair.first);
+		if (mapIt == map.end())
+		{
+			auto entry = node->addNode("entry");
+			serializeOut(entry->addNode("key"), pair.first, defaultKey);
+			entry->setAttribute("op", DELETE_OP_ATTRIBUTE);
 		}
 	}
 }
 
 template <typename T>
-void serializeOut(SerializationNode *node, const std::set<T> &set, const std::set<T> &)
+void serializeOut(SerializationNode *node, const std::set<T> &set, const std::set<T> &ref)
 {
-	T defaultRef;
+	const T defaultRef{};
+	// If ref isn't simply a subset of set (IE only appended items) we have to delete and start
+	// again
+	// TODO: Actually try to only add the appended items in that case
+	if (!ref.empty())
+	{
+		node->setAttribute("op", DELETE_OP_ATTRIBUTE);
+	}
 	for (const auto &entry : set)
 	{
 		serializeOut(node->addNode("entry"), entry, defaultRef);
@@ -525,9 +663,17 @@ void serializeOut(SerializationNode *node, const std::pair<A, B> &pair, const st
 }
 
 template <typename T>
-void serializeOut(SerializationNode *node, const std::list<T> &list, const std::list<T> &)
+void serializeOut(SerializationNode *node, const std::list<T> &list, const std::list<T> &ref)
 {
-	T defaultRef;
+	const T defaultRef{};
+	// If ref isn't simply a prefix of list (IE only appended items) we have to delete and start
+	// again
+	// TODO: Actually try to only add the appended items in that case
+	if (!ref.empty())
+	{
+		node->setAttribute("op", DELETE_OP_ATTRIBUTE);
+	}
+
 	for (auto &entry : list)
 	{
 		serializeOut(node->addNode("entry"), entry, defaultRef);
@@ -535,9 +681,16 @@ void serializeOut(SerializationNode *node, const std::list<T> &list, const std::
 }
 
 template <typename T>
-void serializeOut(SerializationNode *node, const std::vector<T> &vector, const std::vector<T> &)
+void serializeOut(SerializationNode *node, const std::vector<T> &vector, const std::vector<T> &ref)
 {
-	T defaultRef;
+	const T defaultRef{};
+	// If ref isn't simply a prefix of vector (IE only appended items) we have to delete and start
+	// again
+	// TODO: Actually try to only add the appended items in that case
+	if (!ref.empty())
+	{
+		node->setAttribute("op", DELETE_OP_ATTRIBUTE);
+	}
 	for (auto &entry : vector)
 	{
 		serializeOut(node->addNode("entry"), entry, defaultRef);

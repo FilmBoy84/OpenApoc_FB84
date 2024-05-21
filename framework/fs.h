@@ -32,7 +32,7 @@ class IFile : public std::istream
 	bool readule32(uint32_t &val);
 	const UString &fileName() const;
 	const UString &systemPath() const;
-	IFile(IFile &&other);
+	IFile(IFile &&other) noexcept;
 };
 
 class FileSystem
@@ -48,6 +48,7 @@ class FileSystem
 	std::list<UString> enumerateDirectory(const UString &path, const UString &extension) const;
 	std::list<UString> enumerateDirectoryRecursive(const UString &path,
 	                                               const UString &extension) const;
+	UString resolvePath(const UString &path) const;
 };
 
 } // namespace OpenApoc

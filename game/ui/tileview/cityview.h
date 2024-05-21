@@ -53,7 +53,7 @@ class CityView : public CityTileView
   private:
 	sp<Form> activeTab, baseForm;
 	std::vector<sp<Form>> uiTabs;
-	sp<Form> overlayTab;
+	sp<Form> overlayTab, debugOverlay;
 	std::vector<sp<GraphicButton>> miniViews;
 	CityUpdateSpeed updateSpeed;
 	CityUpdateSpeed lastSpeed;
@@ -103,6 +103,9 @@ class CityView : public CityTileView
 	bool handleClickedOrganisation(StateRef<Organisation> organisation, bool rightClick,
 	                               CitySelectionState selState);
 
+	void showDailyReport();
+
+	void showWeeklyFundingReport();
 	void tryOpenUfopaediaEntry(StateRef<UfopaediaEntry> ufopaediaEntry);
 
 	// Orders
@@ -128,6 +131,7 @@ class CityView : public CityTileView
 
 	void begin() override;
 	void resume() override;
+	void refreshBaseView();
 	void update() override;
 	void render() override;
 	void eventOccurred(Event *e) override;

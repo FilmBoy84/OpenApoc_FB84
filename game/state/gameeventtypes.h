@@ -21,6 +21,7 @@ enum class GameEventType
 	VehicleRefuelled,
 	VehicleNoEngine,
 	VehicleRecovered,
+	VehicleModuleScrapped,
 	UnauthorizedVehicle,
 	NotEnoughAmmo,
 	NotEnoughFuel,
@@ -51,13 +52,15 @@ enum class GameEventType
 	CargoExpiresSoon,
 	MissionCompletedBuildingRaid,
 	MissionCompletedBuildingNormal,
+	OrganisationAttackBuilding,
+	OrganisationRaidBuilding,
+	OrganisationStormBuilding,
+	OrganisationTreatySigned,
 
-	// Organization events
+	// Organisation events
 	AlienTakeover,
-	OrganizationAttack,
-	OrganizationRaid,
-	OrganizationTreaty,
-	OrganizationBribe,
+	OrganisationRequestBribe,
+	OrganisationRequestAlliance,
 
 	// Agent events
 	AgentArrived,
@@ -82,6 +85,7 @@ enum class GameEventType
 	AgentPsiControlled,
 	AgentPsiOver,
 	NoLOF,
+	AgentOutOfAmmo,
 
 	// Battle events
 
@@ -102,6 +106,7 @@ enum class GameEventType
 
 	// Misc
 	MarketUpdate,
+	DailyReport,
 	WeeklyReport,
 	EnterAlienDimension,
 	LeaveAlienDimension,

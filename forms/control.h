@@ -72,6 +72,7 @@ class Control : public std::enable_shared_from_this<Control>
 
 	bool Visible;
 	bool isClickable;
+	bool Removed;
 
   public:
 	UString Name;
@@ -137,7 +138,8 @@ class Control : public std::enable_shared_from_this<Control>
 
 	sp<Control> getParent() const;
 	sp<Form> getForm();
-	void setParent(sp<Control> Parent, int position = -1);
+	void setParent(sp<Control> Parent, int position);
+	void setParent(sp<Control> Parent);
 	sp<Control> getAncestor(sp<Control> Parent);
 
 	Vec2<int> getLocationOnScreen() const { return resolvedLocation; }
@@ -161,7 +163,7 @@ class Control : public std::enable_shared_from_this<Control>
 	bool eventIsWithin(const Event *e) const;
 	bool isPointInsideControlBounds(Event *e, sp<Control> c) const;
 
-	template <typename T, typename... Args> sp<T> createChild(Args &&... args)
+	template <typename T, typename... Args> sp<T> createChild(Args &&...args)
 	{
 		sp<T> newControl = mksp<T>(std::forward<Args>(args)...);
 		newControl->setParent(shared_from_this());
@@ -174,6 +176,7 @@ class Control : public std::enable_shared_from_this<Control>
 	virtual bool click();
 	// Setter for funcPreRender
 	void setFuncPreRender(std::function<void(sp<Control>)> func) { funcPreRender = func; }
+	void setRemoved() { Removed = true; }
 };
 
 }; // namespace OpenApoc

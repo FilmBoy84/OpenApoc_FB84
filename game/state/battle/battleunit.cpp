@@ -29,6 +29,55 @@
 namespace OpenApoc
 {
 
+static int getPsiCost(PsiStatus status, bool isAttack)
+{
+	switch (status)
+	{
+		case PsiStatus::NotEngaged:
+			LogError("Invalid value NotEngaged for psiStatus in getPsiCost()");
+			return 0;
+		case PsiStatus::Control:
+			return isAttack ? 32 : 4;
+		case PsiStatus::Panic:
+			return isAttack ? 10 : 3;
+		case PsiStatus::Stun:
+			return isAttack ? 16 : 5;
+		case PsiStatus::Probe:
+			return isAttack ? 8 : 3;
+	}
+	LogError("Unexpected Psi Status in getPsiCost()");
+	return 0;
+}
+
+static int getPsiAttackChance(int psiAttack, int psiDefense, PsiStatus status, bool isAttack)
+{
+	// Psi chance as per Wong's Guide, confirmed by Mell
+	/*
+	                     100*attack*(100-defense)
+	success rate = --------------------------------------
+	                 attack*(100-defense) + 100*defense
+
+	           psiattack rating * 40
+	attack = ---------------------------
+	          initiation cost of action
+
+	Note: As tested by Mell, Probe is min 20%
+	*/
+	int cost = getPsiCost(status, isAttack);
+	int attack = psiAttack * 40 / cost;
+	int defense = psiDefense;
+	int chance = 0;
+	if (attack != 0 || defense != 0)
+	{
+		chance = (100 * attack * (100 - defense)) / (attack * (100 - defense) + 100 * defense);
+	}
+	if (status == PsiStatus::Probe && attack != 0)
+	{
+		chance = std::max(20, chance);
+	}
+	return chance;
+}
+
 namespace
 {
 static const std::set<TileObject::Type> mapPartSet = {
@@ -47,7 +96,7 @@ static const std::map<int, Vec2<int>> dir_facing_map = {{0, {0, -1}}, {1, {1, -1
                                                         {6, {-1, 0}}, {7, {-1, -1}}};
 } // namespace
 
-sp<BattleUnit> BattleUnit::get(const GameState &state, const UString &id)
+template <> sp<BattleUnit> StateObject<BattleUnit>::get(const GameState &state, const UString &id)
 {
 	auto it = state.current_battle->units.find(id);
 	if (it == state.current_battle->units.end())
@@ -58,17 +107,18 @@ sp<BattleUnit> BattleUnit::get(const GameState &state, const UString &id)
 	return it->second;
 }
 
-const UString &BattleUnit::getPrefix()
+template <> const UString &StateObject<BattleUnit>::getPrefix()
 {
 	static UString prefix = "BATTLEUNIT_";
 	return prefix;
 }
-const UString &BattleUnit::getTypeName()
+template <> const UString &StateObject<BattleUnit>::getTypeName()
 {
 	static UString name = "BattleUnit";
 	return name;
 }
-const UString &BattleUnit::getId(const GameState &state, const sp<BattleUnit> ptr)
+template <>
+const UString &StateObject<BattleUnit>::getId(const GameState &state, const sp<BattleUnit> ptr)
 {
 	static const UString emptyString = "";
 	for (auto &a : state.current_battle->units)
@@ -76,7 +126,7 @@ const UString &BattleUnit::getId(const GameState &state, const sp<BattleUnit> pt
 		if (a.second == ptr)
 			return a.first;
 	}
-	LogError("No battleUnit matching pointer %p", ptr.get());
+	LogError("No battleUnit matching pointer %p", static_cast<void *>(ptr.get()));
 	return emptyString;
 }
 
@@ -161,6 +211,39 @@ bool BattleUnit::isFatallyWounded()
 		}
 	}
 	return false;
+}
+
+void BattleUnit::reloadWeapons(GameState &state)
+{
+	// FIXME: Only reload player agents?
+	if (agent->owner == state.getPlayer())
+	{
+		auto weaponRight = agent->getFirstItemInSlot(EquipmentSlotType::RightHand);
+		auto weaponLeft = agent->getFirstItemInSlot(EquipmentSlotType::LeftHand);
+		if (weaponRight)
+		{
+
+			if (weaponRight->needsReload())
+			{
+				weaponRight->loadAmmo(state);
+			}
+			else
+			{
+				weaponRight->lastLoadedAmmoType = weaponRight->payloadType;
+			}
+		}
+		if (weaponLeft)
+		{
+			if (weaponLeft->needsReload())
+			{
+				weaponLeft->loadAmmo(state);
+			}
+			else
+			{
+				weaponLeft->lastLoadedAmmoType = weaponLeft->payloadType;
+			}
+		}
+	}
 }
 
 void BattleUnit::setPosition(GameState &state, const Vec3<float> &pos, bool goal)
@@ -609,6 +692,7 @@ void BattleUnit::refreshUnitVision(GameState &state, bool forceBlind,
 			battle.visibleUnits[owner].insert(vu);
 			if (owner == state.current_battle->currentPlayer &&
 			    owner->isRelatedTo(vu->owner) == Organisation::Relation::Hostile &&
+			    vu->owner != state.getCivilian() &&
 			    (battle.lastVisibleTime[owner].find(vu) == battle.lastVisibleTime[owner].end() ||
 			     battle.lastVisibleTime[owner][vu] + TICKS_SUPPRESS_SPOTTED_MESSAGES <= ticks))
 			{
@@ -616,37 +700,43 @@ void BattleUnit::refreshUnitVision(GameState &state, bool forceBlind,
 				state.current_battle->notifyAction(vu->position, vu);
 			}
 		}
-		// battle and units's visible enemies list
-		if (owner->isRelatedTo(vu->owner) == Organisation::Relation::Hostile)
+		// battle and units's visible enemies list (Do not count civilians as enemy)
+		if (owner->isRelatedTo(vu->owner) == Organisation::Relation::Hostile &&
+		    vu->owner != state.getCivilian())
 		{
 			visibleEnemies.insert(vu);
 			battle.visibleEnemies[owner].insert(vu);
 		}
 	}
 
-	// See if someone else sees a unit we stopped seeing
-	for (auto &lvu : lastVisibleUnits)
+	// In turn-based mode during player turn spotted units remain visible until the end of the turn
+	if ((battle.mode == Battle::Mode::RealTime) ||
+	    (battle.currentActiveOrganisation != state.getPlayer()))
 	{
-		if (visibleUnits.find(lvu) == visibleUnits.end())
+		// See if someone else sees a unit we stopped seeing
+		for (auto &lvu : lastVisibleUnits)
 		{
-			bool someoneElseSees = false;
-			for (auto &u : state.current_battle->units)
+			if (visibleUnits.find(lvu) == visibleUnits.end())
 			{
-				if (u.second->owner != owner)
+				bool someoneElseSees = false;
+				for (auto &u : state.current_battle->units)
 				{
-					continue;
+					if (u.second->owner != owner)
+					{
+						continue;
+					}
+					if (u.second->visibleUnits.find(lvu) != u.second->visibleUnits.end())
+					{
+						someoneElseSees = true;
+						break;
+					}
 				}
-				if (u.second->visibleUnits.find(lvu) != u.second->visibleUnits.end())
+				if (!someoneElseSees)
 				{
-					someoneElseSees = true;
-					break;
+					battle.visibleUnits[owner].erase(lvu);
+					battle.visibleEnemies[owner].erase(lvu);
+					battle.lastVisibleTime[owner][lvu] = ticks;
 				}
-			}
-			if (!someoneElseSees)
-			{
-				battle.visibleUnits[owner].erase(lvu);
-				battle.visibleEnemies[owner].erase(lvu);
-				battle.lastVisibleTime[owner][lvu] = ticks;
 			}
 		}
 	}
@@ -817,6 +907,29 @@ bool BattleUnit::startAttacking(GameState &state, WeaponStatus status)
 			{
 				status = WeaponStatus::FiringBothHands;
 			}
+
+			// Do not start an attack if unit's weapon(s) can't fire
+			auto const leftHandWeapon = agent->getFirstItemInSlot(EquipmentSlotType::LeftHand);
+			auto const rightHandWeapon = agent->getFirstItemInSlot(EquipmentSlotType::RightHand);
+			if (status == WeaponStatus::FiringLeftHand &&
+			    (!leftHandWeapon || !leftHandWeapon->canFire(state, targetTile)))
+			{
+				return false;
+			}
+
+			if (status == WeaponStatus::FiringRightHand &&
+			    (!rightHandWeapon || !rightHandWeapon->canFire(state, targetTile)))
+			{
+				return false;
+			}
+
+			if (status == WeaponStatus::FiringBothHands &&
+			    (!leftHandWeapon || !leftHandWeapon->canFire(state, targetTile)) &&
+			    (!rightHandWeapon || !rightHandWeapon->canFire(state, targetTile)))
+			{
+				return false;
+			}
+
 			break;
 		}
 	}
@@ -944,28 +1057,8 @@ bool BattleUnit::hasLineToPosition(Vec3<float> targetPosition, bool useLOS) cons
 	           || cUnit->brainSucker);
 }
 
-int BattleUnit::getPsiCost(PsiStatus status, bool attack)
-{
-	switch (status)
-	{
-		case PsiStatus::NotEngaged:
-			LogError("Invalid value NotEngaged for psiStatus in getPsiCost()");
-			return 0;
-		case PsiStatus::Control:
-			return attack ? 32 : 4;
-		case PsiStatus::Panic:
-			return attack ? 10 : 3;
-		case PsiStatus::Stun:
-			return attack ? 16 : 5;
-		case PsiStatus::Probe:
-			return attack ? 8 : 3;
-	}
-	LogError("Unexpected Psi Status in getPsiCost()");
-	return 0;
-}
-
-int BattleUnit::getPsiChance(StateRef<BattleUnit> target, PsiStatus status,
-                             StateRef<AEquipmentType> item)
+int BattleUnit::getPsiChanceForEquipment(StateRef<BattleUnit> target, PsiStatus status,
+                                         StateRef<AEquipmentType> item)
 {
 	if (status == PsiStatus::NotEngaged)
 	{
@@ -983,36 +1076,15 @@ int BattleUnit::getPsiChance(StateRef<BattleUnit> target, PsiStatus status,
 		e2 = nullptr;
 	}
 	auto bender = e1 ? e1 : e2;
+
 	auto cost = getPsiCost(status);
 	if (!bender || agent->modified_stats.psi_energy < cost || !hasLineToUnit(target, true))
 	{
 		return 0;
 	}
 
-	// Psi chance as per Wong's Guide, confirmed by Mell
-	/*
-	                     100*attack*(100-defense)
-	success rate = --------------------------------------
-	                 attack*(100-defense) + 100*defense
-
-	           psiattack rating * 40
-	attack = ---------------------------
-	          initiation cost of action
-
-	Note: As tested by Mell, Probe is min 20%
-	*/
-	int attack = agent->modified_stats.psi_attack * 40 / cost;
-	int defense = target->agent->modified_stats.psi_defence;
-	int chance = 0;
-	if (attack != 0 || defense != 0)
-	{
-		chance = (100 * attack * (100 - defense)) / (attack * (100 - defense) + 100 * defense);
-	}
-	if (status == PsiStatus::Probe && attack != 0)
-	{
-		chance = std::max(20, chance);
-	}
-	return chance;
+	return getPsiAttackChance(agent->modified_stats.psi_attack,
+	                          target->agent->modified_stats.psi_defence, status);
 }
 
 bool BattleUnit::startAttackPsi(GameState &state, StateRef<BattleUnit> target, PsiStatus status,
@@ -1052,7 +1124,7 @@ bool BattleUnit::startAttackPsiInternal(GameState &state, StateRef<BattleUnit> t
 	{
 		setHandState(HandState::Firing);
 	}
-	int chance = getPsiChance(target, status, item);
+	int chance = getPsiChanceForEquipment(target, status, item);
 	int roll = randBoundsExclusive(state.rng, 0, 100);
 	experiencePoints.psi_attack++;
 	experiencePoints.psi_energy++;
@@ -1523,6 +1595,7 @@ void BattleUnit::applyDamageDirect(GameState &state, int damage, bool generateFa
                                    BodyPart fatalWoundPart, int stunPower,
                                    StateRef<BattleUnit> attacker, bool violent)
 {
+
 	// Just a blank value for checks (if equal to this means no event)
 	static auto NO_EVENT = GameEventType::AgentArrived;
 
@@ -1700,6 +1773,13 @@ bool BattleUnit::applyDamage(GameState &state, int power, StateRef<DamageType> d
 		damageModifier = agent->type->damage_modifier;
 	}
 
+	if (damageType->effectType == DamageType::EffectType::Psionic)
+	{
+		applyMoraleDamage(damage, power, state);
+		// Deal only damage to morale
+		damage = 0;
+	}
+
 	// Catch on fire
 	if (damageType->effectType == DamageType::EffectType::Fire)
 	{
@@ -1763,11 +1843,29 @@ bool BattleUnit::applyDamage(GameState &state, int power, StateRef<DamageType> d
 		applyDamageDirect(state, stunDamage, false, bodyPart, power, attacker);
 		damage -= stunDamage;
 	}
+
 	applyDamageDirect(state, damage, damageType->dealsFatalWounds(), bodyPart,
 	                  damageType->dealsStunDamage() ? power : 0, attacker,
 	                  !damageType->non_violent);
 
 	return false;
+}
+
+void BattleUnit::applyMoraleDamage(int moraleDamage, int psiAttackPower, GameState &state)
+{
+	LogWarning("Psionic damageType");
+	const int random = randBoundsExclusive(state.rng, 0, 100);
+	const int chance =
+	    getPsiAttackChance(psiAttackPower, agent->modified_stats.psi_defence, PsiStatus::Panic);
+
+	LogWarning("Chance: %i  Random: %i", chance, random);
+
+	if (random < chance)
+	{
+		LogWarning("Psionic damage passed the defence of %s", agent->name);
+		agent->modified_stats.loseMorale(moraleDamage);
+		LogWarning("morale: %d", agent->modified_stats.bravery);
+	}
 }
 
 BodyPart BattleUnit::determineBodyPartHit(StateRef<DamageType> damageType, Vec3<float> cposition,
@@ -1866,7 +1964,8 @@ void BattleUnit::update(GameState &state, unsigned int ticks)
 
 	// Update Items
 	bool updatedShield = false;
-	for (auto &item : agent->equipment)
+	auto equipmentCopy = agent->equipment;
+	for (auto &item : equipmentCopy)
 	{
 		if (item->type->type == AEquipmentType::Type::DisruptorShield &&
 		    item->ammo < item->getPayloadType()->max_ammo)
@@ -2293,8 +2392,8 @@ void BattleUnit::updateEvents(GameState &state)
 	{
 		// our target has a priority over others if enemy
 		auto lastSeenEnemyPosition =
-		    (targetUnit &&
-		     state.current_battle->visibleEnemies[owner].find(targetUnit) != visibleEnemies.end())
+		    (targetUnit && state.current_battle->visibleEnemies[owner].find(targetUnit) !=
+		                       state.current_battle->visibleEnemies[owner].end())
 		        ? targetUnit->position
 		        : (*visibleEnemies.begin())->position;
 
@@ -3705,6 +3804,12 @@ void BattleUnit::triggerProximity(GameState &state)
 
 void BattleUnit::triggerBrainsuckers(GameState &state)
 {
+	// Androids do not trigger brainsuckers
+	if (this->agent->type->immuneToBrainsuckers)
+	{
+		return;
+	}
+
 	StateRef<DamageType> brainsucker = {&state, "DAMAGETYPE_BRAINSUCKER"};
 	if (brainsucker->dealDamage(100, agent->type->damage_modifier) == 0)
 		return;
@@ -4389,7 +4494,9 @@ void BattleUnit::dropDown(GameState &state)
 	cloakTicksAccumulated = 0;
 	stopAttacking();
 	stopAttackPsi(state);
-	for (auto &a : psiAttackers)
+	// Iterate over copy as stopAttackPsi will modify the map.
+	auto psiAttackersCopy = psiAttackers;
+	for (auto &a : psiAttackersCopy)
 	{
 		auto attacker = StateRef<BattleUnit>(&state, a.first);
 		if (attacker->psiStatus != PsiStatus::Stun)
@@ -4397,6 +4504,7 @@ void BattleUnit::dropDown(GameState &state)
 			attacker->stopAttackPsi(state);
 		}
 	}
+
 	aiList.reset(state, *this);
 	resetGoal();
 	setHandState(HandState::AtEase);
@@ -4583,7 +4691,12 @@ bool BattleUnit::useSpawner(GameState &state, const AEquipmentType &item)
 void BattleUnit::die(GameState &state, StateRef<BattleUnit> attacker, bool violently)
 {
 	auto attackerOrg = attacker ? attacker->agent->owner : nullptr;
+	if (attacker)
+	{
+		attacker->recordKill();
+	}
 	auto ourOrg = agent->owner;
+	bool destroy = false;
 	// Violent deaths (spawn stuff, blow up)
 	if (violently)
 	{
@@ -4597,6 +4710,7 @@ void BattleUnit::die(GameState &state, StateRef<BattleUnit> attacker, bool viole
 					                                   e->type->damage_type->explosionDoodad,
 					                                   e->type->damage_type, e->type->damage,
 					                                   e->type->explosion_depletion_rate, owner);
+					destroy = true;
 					break;
 				case AEquipmentType::Type::Spawner:
 				{
@@ -4743,8 +4857,22 @@ void BattleUnit::die(GameState &state, StateRef<BattleUnit> attacker, bool viole
 	removeFromSquad(*state.current_battle);
 	// Agent also dies
 	agent->die(state);
-	// Animate body
-	dropDown(state);
+	if (!destroy)
+	{
+		// Animate body
+		dropDown(state);
+	}
+	else
+	{
+		// Remove body
+		markUnVisible(state);
+		if (shadowObject)
+		{
+			shadowObject->removeFromMap();
+		}
+		tileObject->removeFromMap();
+		destroyed = true;
+	}
 }
 
 void BattleUnit::fallUnconscious(GameState &state, StateRef<BattleUnit> attacker)
@@ -5838,4 +5966,21 @@ bool BattleUnit::addMission(GameState &state, BattleUnitMission *mission, bool t
 	}
 	return !mission->cancelled;
 }
+
+void BattleUnit::completedMission()
+{
+	if (agent)
+	{
+		agent->incrementMissionCount();
+	}
+}
+
+void BattleUnit::recordKill()
+{
+	if (agent)
+	{
+		agent->incrementKillCount();
+	}
+}
+
 } // namespace OpenApoc

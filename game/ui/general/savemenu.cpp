@@ -227,22 +227,26 @@ void SaveMenu::loadWithWarning(sp<Control> parent)
 		sp<SaveMetadata> slot = parent->getData<SaveMetadata>();
 		if (slot != nullptr)
 		{
-			std::function<void()> onSuccess = std::function<void()>([this, slot] {
-				auto state = mksp<GameState>();
-				auto task = saveManager.loadGame(*slot, state);
-				fw().stageQueueCommand(
-				    {StageCmd::Command::PUSH,
-				     mksp<LoadingScreen>(nullptr, std::move(task), [state]() -> sp<Stage> {
-					     if (state->current_battle)
-					     {
-						     return mksp<BattleView>(state);
-					     }
-					     else
-					     {
-						     return mksp<CityView>(state);
-					     }
-				     })});
-			});
+			std::function<void()> onSuccess = std::function<void()>(
+			    [this, slot]
+			    {
+				    auto state = mksp<GameState>();
+				    auto task = saveManager.loadGame(*slot, state);
+				    fw().stageQueueCommand(
+				        {StageCmd::Command::REPLACEALL,
+				         mksp<LoadingScreen>(nullptr, std::move(task),
+				                             [state]() -> sp<Stage>
+				                             {
+					                             if (state->current_battle)
+					                             {
+						                             return mksp<BattleView>(state);
+					                             }
+					                             else
+					                             {
+						                             return mksp<CityView>(state);
+					                             }
+				                             })});
+			    });
 			sp<MessageBox> messageBox = mksp<MessageBox>(
 			    MessageBox("Load game", "Unsaved progress will be lost. Continue?",
 			               MessageBox::ButtonOptions::YesNo, std::move(onSuccess), nullptr));
@@ -261,40 +265,34 @@ void SaveMenu::tryToLoadGame(sp<Control> slotControl)
 		{
 			auto state = mksp<GameState>();
 			auto task = saveManager.loadGame(*slot, state);
-			fw().stageQueueCommand(
-			    {StageCmd::Command::PUSH,
-			     mksp<LoadingScreen>(nullptr, std::move(task), [state]() -> sp<Stage> {
-				     if (state->current_battle)
-				     {
-					     return mksp<BattleView>(state);
-				     }
-				     else
-				     {
-					     return mksp<CityView>(state);
-				     }
-			     })});
+			fw().stageQueueCommand({StageCmd::Command::REPLACEALL,
+			                        mksp<LoadingScreen>(nullptr, std::move(task),
+			                                            [state]() -> sp<Stage>
+			                                            {
+				                                            if (state->current_battle)
+				                                            {
+					                                            return mksp<BattleView>(state);
+				                                            }
+				                                            else
+				                                            {
+					                                            return mksp<CityView>(state);
+				                                            }
+			                                            })});
 		}
 	}
 }
 
-void SaveMenu::tryToSaveGame(const UString &saveName, sp<Control> parent)
+void SaveMenu::tryToSaveGame(const UString &saveName, const sp<Control> parent)
 {
+	// If saving new item from first row
 	if (parent->Name == newSaveItemId)
 	{
-		if (saveManager.newSaveGame(saveName, currentState))
+		const auto saveGameMetadata = saveManager.getSaveGameIfExists(saveName);
+
+		// If no game with same name exists in folder
+		if (!saveGameMetadata)
 		{
-			fw().stageQueueCommand({StageCmd::Command::POP});
-		}
-		else
-		{
-			clearTextEdit(activeTextEdit);
-		}
-	}
-	else
-	{
-		sp<SaveMetadata> slot = parent->getData<SaveMetadata>();
-		std::function<void()> onSuccess = std::function<void()>([this, slot, saveName] {
-			if (saveManager.overrideGame(*slot, saveName, currentState))
+			if (saveManager.newSaveGame(saveName, currentState))
 			{
 				fw().stageQueueCommand({StageCmd::Command::POP});
 			}
@@ -302,27 +300,64 @@ void SaveMenu::tryToSaveGame(const UString &saveName, sp<Control> parent)
 			{
 				clearTextEdit(activeTextEdit);
 			}
-		});
-		std::function<void()> onCancel =
-		    std::function<void()>([this] { clearTextEdit(activeTextEdit); });
-		sp<MessageBox> messageBox = mksp<MessageBox>(MessageBox(
-		    "Override saved game", "Do you really want to override " + slot->getName() + "?",
-		    MessageBox::ButtonOptions::YesNo, std::move(onSuccess), std::move(onCancel)));
-
-		fw().stageQueueCommand({StageCmd::Command::PUSH, messageBox});
+		}
+		// If the user use the first row but wrote the name of an already existing save game
+		else
+		{
+			SaveMenu::askUserIfWantToOverrideSavedGame(*saveGameMetadata, saveName);
+		}
 	}
+
+	// If saving item using row for existing item
+	else
+	{
+		const auto slot = parent->getData<SaveMetadata>();
+		SaveMenu::askUserIfWantToOverrideSavedGame(*slot, saveName);
+	}
+}
+
+void SaveMenu::askUserIfWantToOverrideSavedGame(const SaveMetadata &saveMetadata,
+                                                const UString &saveName)
+{
+	const auto &metadataSaveName = saveMetadata.getName();
+	const auto messageBoxTitle = tr("Override saved game");
+	const auto messageBoxContent =
+	    format(tr("Do you really want to override %s?"), metadataSaveName);
+
+	auto onYes = std::function<void()>(
+	    [this, saveMetadata, saveName]
+	    {
+		    if (saveManager.overrideGame(saveMetadata, saveName, currentState))
+		    {
+			    fw().stageQueueCommand({StageCmd::Command::POP});
+		    }
+		    else
+		    {
+			    clearTextEdit(activeTextEdit);
+		    }
+	    });
+
+	auto onNo = std::function<void()>([this] { clearTextEdit(activeTextEdit); });
+
+	sp<MessageBox> messageBox = mksp<MessageBox>(MessageBox(messageBoxTitle, messageBoxContent,
+	                                                        MessageBox::ButtonOptions::YesNo,
+	                                                        std::move(onYes), std::move(onNo)));
+
+	fw().stageQueueCommand({StageCmd::Command::PUSH, messageBox});
 }
 
 void SaveMenu::tryToDeleteSavedGame(sp<Control> &slotControl)
 {
 	sp<SaveMetadata> slot = slotControl->getData<SaveMetadata>();
-	std::function<void()> onSuccess = std::function<void()>([this, slotControl, slot] {
-		if (saveManager.deleteGame(slot))
-		{
-			// no way to pop
-			slotControl->setVisible(false);
-		}
-	});
+	std::function<void()> onSuccess = std::function<void()>(
+	    [this, slotControl, slot]
+	    {
+		    if (saveManager.deleteGame(slot))
+		    {
+			    // no way to pop
+			    slotControl->setVisible(false);
+		    }
+	    });
 	sp<MessageBox> messageBox = mksp<MessageBox>(
 	    MessageBox("Delete saved game", "Do you really want to delete " + slot->getName() + "?",
 	               MessageBox::ButtonOptions::YesNo, std::move(onSuccess), nullptr));
@@ -336,9 +371,12 @@ void SaveMenu::eventOccurred(Event *e)
 
 	if (e->type() == EVENT_KEY_DOWN)
 	{
-		if (e->keyboard().KeyCode == SDLK_ESCAPE)
+		if (activeTextEdit && activeTextEdit->isFocused())
+			return;
+		if (e->keyboard().KeyCode == SDLK_ESCAPE || e->keyboard().KeyCode == SDLK_RETURN ||
+		    e->keyboard().KeyCode == SDLK_KP_ENTER)
 		{
-			fw().stageQueueCommand({StageCmd::Command::POP});
+			menuform->findControl("BUTTON_QUIT")->click();
 			return;
 		}
 	}

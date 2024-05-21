@@ -14,7 +14,9 @@ struct VehicleData
 	uint16_t image_position_4;
 	uint16_t graphic_frame;
 	uint16_t acceleration;
-	uint16_t unknown;
+	/* All dimension-capable craft have a non-zero value, I don't know what the values (1-8) then
+	 * mean... */
+	uint16_t dimension_travel;
 	uint16_t top_speed;
 	uint16_t shadow_graphic;
 	uint16_t shadow_position_1;
@@ -69,7 +71,7 @@ struct VehicleEquipmentLayoutSlot
 #define VEHICLE_EQUIPMENT_LAYOUT_SLOT_ALIGN_RIGHT 0x02
 	uint8_t alignment_x;
 #define VEHICLE_EQUIPMENT_LAYOUT_SLOT_ALIGN_TOP 0x00
-//#define VEHICLE_EQUIPMENT_LAYOUT_SLOT_ALIGN_CENTRE 0x01 same as above
+// #define VEHICLE_EQUIPMENT_LAYOUT_SLOT_ALIGN_CENTRE 0x01 same as above
 #define VEHICLE_EQUIPMENT_LAYOUT_SLOT_ALIGN_BOTTOM 0x02
 	uint8_t alignment_y;
 };

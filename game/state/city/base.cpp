@@ -20,6 +20,39 @@ namespace OpenApoc
 
 constexpr int Base::SIZE;
 
+template <> sp<Base> StateObject<Base>::get(const GameState &state, const UString &id)
+{
+	auto it = state.player_bases.find(id);
+	if (it == state.player_bases.end())
+	{
+		LogError("No baseas matching ID \"%s\"", id);
+		return nullptr;
+	}
+	return it->second;
+}
+
+template <> const UString &StateObject<Base>::getPrefix()
+{
+	static UString prefix = "BASE_";
+	return prefix;
+}
+template <> const UString &StateObject<Base>::getTypeName()
+{
+	static UString name = "Base";
+	return name;
+}
+template <> const UString &StateObject<Base>::getId(const GameState &state, const sp<Base> ptr)
+{
+	static const UString emptyString = "";
+	for (auto &b : state.player_bases)
+	{
+		if (b.second == ptr)
+			return b.first;
+	}
+	LogError("No base matching pointer %p", static_cast<void *>(ptr.get()));
+	return emptyString;
+}
+
 Base::Base(GameState &state, StateRef<Building> building) : building(building)
 {
 	corridors = std::vector<std::vector<bool>>(SIZE, std::vector<bool>(SIZE, false));
@@ -49,6 +82,7 @@ void Base::die(GameState &state, bool collapse)
 	fw().pushEvent(new GameSomethingDiedEvent(
 	    GameEventType::BaseDestroyed, name,
 	    collapse ? /*by collapsing building*/ "" : "byEnemyForces", building->crewQuarters));
+
 	for (auto &b : building->city->buildings)
 	{
 		for (auto &c : b.second->cargo)
@@ -393,6 +427,21 @@ void Base::destroyFacility(GameState &state, Vec2<int> pos)
 	}
 }
 
+bool Base::containmentEmpty(GameState &state)
+{
+	for (auto &f : facilities)
+	{
+		if (f->type->capacityType == FacilityType::Capacity::Aliens)
+		{
+			if (getCapacityUsed(state, f->type->capacityType) != 0)
+			{
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
 int Base::getCapacityUsed(GameState &state, FacilityType::Capacity type) const
 {
 	int total = 0;
@@ -447,7 +496,9 @@ int Base::getCapacityUsed(GameState &state, FacilityType::Capacity type) const
 			}
 			break;
 		case FacilityType::Capacity::Chemistry:
+			[[fallthrough]];
 		case FacilityType::Capacity::Physics:
+			[[fallthrough]];
 		case FacilityType::Capacity::Workshop:
 			for (auto f = facilities.begin(); f != facilities.end(); ++f)
 			{
@@ -486,11 +537,19 @@ int Base::getCapacityUsed(GameState &state, FacilityType::Capacity type) const
 			}
 			break;
 		case FacilityType::Capacity::Aliens:
+		{
 			for (auto &e : inventoryBioEquipment)
 			{
+				if (e.second == 0)
+					continue;
+
 				StateRef<AEquipmentType> ae = {&state, e.first};
 				total += ae->store_space * e.second;
 			}
+		}
+		break;
+		case FacilityType::Capacity::Nothing:
+			// Nothing needs to be handled
 			break;
 	}
 
@@ -510,71 +569,38 @@ int Base::getCapacityTotal(FacilityType::Capacity type) const
 	return total;
 }
 
-int Base::getUsage(GameState &state, sp<Facility> facility, int delta) const
+float Base::getUsage(GameState &state, const sp<Facility> facility, const int delta) const
 {
-	if (facility->lab)
-	{
-		float usage = 0.0f;
-		if (delta != 0)
-		{
-			LogError("Delta is only supposed to be used with stores, alien containment and LQ!");
-		}
-		if (facility->lab->current_project)
-		{
-			usage = (float)facility->lab->assigned_agents.size();
-			usage /= facility->type->capacityAmount;
-		}
-		return static_cast<int>(ceilf(usage * 100.0f));
-	}
-	else
-	{
+	if (!facility->lab)
 		return getUsage(state, facility->type->capacityType, delta);
+
+	float usage = 0.0f;
+	if (delta != 0)
+	{
+		LogError("Delta is only supposed to be used with stores, alien containment and LQ!");
 	}
+
+	if (facility->lab->current_project)
+	{
+		usage = (float)facility->lab->assigned_agents.size();
+		usage /= facility->type->capacityAmount;
+	}
+
+	return static_cast<float>(ceilf(usage * 100.0f));
 }
 
-int Base::getUsage(GameState &state, FacilityType::Capacity type, int delta) const
+float Base::getUsage(GameState &state, const FacilityType::Capacity type, const int delta) const
 {
-	int used = getCapacityUsed(state, type) + delta;
-	int total = getCapacityTotal(type);
+	const auto used = getCapacityUsed(state, type) + delta;
+	const auto total = getCapacityTotal(type);
 	if (total == 0)
 	{
 		return used > 0 ? 999 : 0;
 	}
 
-	// + total / 2  due to rounding
-	return std::min(999, (100 * used + total / 2) / total);
-}
+	auto usage = (float)used / total * 100;
+	usage = std::min(999.f, usage);
 
-sp<Base> Base::get(const GameState &state, const UString &id)
-{
-	auto it = state.player_bases.find(id);
-	if (it == state.player_bases.end())
-	{
-		LogError("No baseas matching ID \"%s\"", id);
-		return nullptr;
-	}
-	return it->second;
-}
-
-const UString &Base::getPrefix()
-{
-	static UString prefix = "BASE_";
-	return prefix;
-}
-const UString &Base::getTypeName()
-{
-	static UString name = "Base";
-	return name;
-}
-const UString &Base::getId(const GameState &state, const sp<Base> ptr)
-{
-	static const UString emptyString = "";
-	for (auto &b : state.player_bases)
-	{
-		if (b.second == ptr)
-			return b.first;
-	}
-	LogError("No base matching pointer %p", ptr.get());
-	return emptyString;
+	return usage;
 }
 }; // namespace OpenApoc

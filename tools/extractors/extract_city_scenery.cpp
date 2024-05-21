@@ -168,7 +168,7 @@ void InitialGameStateExtractor::extractCityScenery(GameState &state, UString til
 			tile->tube[i] = entry.people_tube_connections[i];
 		}
 
-		if (alien && (i >= 50 && i <= 58 || i == 61))
+		if (alien && ((i >= 50 && i <= 58) || i == 61))
 		{
 			if (i == 58 || i == 61)
 			{
@@ -216,6 +216,10 @@ void InitialGameStateExtractor::extractCityScenery(GameState &state, UString til
 				tile->height = 8;
 				break;
 			}
+		}
+		if (tile->value > 5)
+		{
+			tile->isBuildingPart = true;
 		}
 		// Correct walk modes
 		if (tile->height < 8 && tile->walk_mode == SceneryTileType::WalkMode::Onto)

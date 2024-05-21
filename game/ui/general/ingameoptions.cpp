@@ -21,6 +21,7 @@
 #include "game/ui/general/savemenu.h"
 #include "game/ui/skirmish/skirmish.h"
 #include "game/ui/tileview/cityview.h"
+#include "moreoptions.h"
 #include <list>
 
 namespace OpenApoc
@@ -68,53 +69,9 @@ std::list<std::pair<UString, UString>> cityNotificationList = {
     {"Notifications.City", "VehicleRefuelled"},
     {"Notifications.City", "NotEnoughFuel"},
     {"Notifications.City", "UnauthorizedVehicle"},
+    {"Notifications.City", "BaseDestroyed"},
 };
 
-std::list<std::pair<UString, UString>> openApocList = {
-    {"OpenApoc.NewFeature", "UFODamageModel"},
-    {"OpenApoc.NewFeature", "InstantExplosionDamage"},
-    {"OpenApoc.NewFeature", "GravliftSounds"},
-    {"OpenApoc.NewFeature", "NoInstantThrows"},
-    {"OpenApoc.NewFeature", "PayloadExplosion"},
-    {"OpenApoc.NewFeature", "DisplayUnitPaths"},
-    {"OpenApoc.NewFeature", "AdditionalUnitIcons"},
-    {"OpenApoc.NewFeature", "AllowForceFiringParallel"},
-    {"OpenApoc.NewFeature", "RequireLOSToMaintainPsi"},
-    {"OpenApoc.NewFeature", "AdvancedInventoryControls"},
-    {"OpenApoc.NewFeature", "EnableAgentTemplates"},
-    {"OpenApoc.NewFeature", "FerryChecksRelationshipWhenBuying"},
-    {"OpenApoc.NewFeature", "AllowManualCityTeleporters"},
-    {"OpenApoc.NewFeature", "AllowManualCargoFerry"},
-    {"OpenApoc.NewFeature", "AllowSoldierTaxiUse"},
-    {"OpenApoc.NewFeature", "AllowAttackingOwnedVehicles"},
-    {"OpenApoc.NewFeature", "CallExistingFerry"},
-    {"OpenApoc.NewFeature", "AlternateVehicleShieldSound"},
-    {"OpenApoc.NewFeature", "StoreDroppedEquipment"},
-    {"OpenApoc.NewFeature", "EnforceCargoLimits"},
-    {"OpenApoc.NewFeature", "AllowNearbyVehicleLootPickup"},
-    {"OpenApoc.NewFeature", "AllowBuildingLootDeposit"},
-    {"OpenApoc.NewFeature", "ArmoredRoads"},
-    {"OpenApoc.NewFeature", "CrashingGroundVehicles"},
-    {"OpenApoc.NewFeature", "OpenApocCityControls"},
-    {"OpenApoc.NewFeature", "CollapseRaidedBuilding"},
-    {"OpenApoc.NewFeature", "ScrambleOnUnintentionalHit"},
-    {"OpenApoc.NewFeature", "MarketOnRight"},
-    {"OpenApoc.NewFeature", "CrashingDimensionGate"},
-    {"OpenApoc.NewFeature", "SkipTurboMovement"},
-    {"OpenApoc.NewFeature", "CrashingOutOfFuel"},
-    {"OpenApoc.NewFeature", "RunAndKneel"},
-    {"OpenApoc.NewFeature", "SeedRng"},
-
-    {"OpenApoc.Mod", "StunHostileAction"},
-    {"OpenApoc.Mod", "RaidHostileAction"},
-    {"OpenApoc.Mod", "CrashingVehicles"},
-    {"OpenApoc.Mod", "InvulnerableRoads"},
-    {"OpenApoc.Mod", "ATVTank"},
-    {"OpenApoc.Mod", "ATVAPC"},
-    {"OpenApoc.Mod", "BSKLauncherSound"},
-};
-
-std::vector<UString> listNames = {tr("Message Toggles"), tr("OpenApoc Features")};
 } // namespace
 
 InGameOptions::InGameOptions(sp<GameState> state)
@@ -134,22 +91,14 @@ void InGameOptions::saveList()
 	}
 }
 
-void InGameOptions::loadList(int id)
+void InGameOptions::loadList()
 {
 	saveList();
-	curId = id;
-	menuform->findControlTyped<Label>("LIST_NAME")->setText(listNames[curId]);
+	menuform->findControlTyped<Label>("LIST_NAME")->setText(tr("Message Toggles"));
 	std::list<std::pair<UString, UString>> *notificationList = nullptr;
-	switch (curId)
-	{
-		case 0:
-			notificationList =
-			    state->current_battle ? &battleNotificationList : &cityNotificationList;
-			break;
-		case 1:
-			notificationList = &openApocList;
-			break;
-	}
+
+	notificationList = state->current_battle ? &battleNotificationList : &cityNotificationList;
+
 	auto listControl = menuform->findControlTyped<ListBox>("NOTIFICATIONS_LIST");
 	listControl->clear();
 	auto font = ui().getFont("smalfont");
@@ -164,18 +113,10 @@ void InGameOptions::loadList(int id)
 		auto label = checkBox->createChild<Label>(tr(config().describe(p.first, p.second)), font);
 		label->Size = {216, listControl->ItemSize};
 		label->Location = {24, 0};
+		label->ToolTipText = tr(config().describe(p.first, p.second));
+		label->ToolTipFont = font;
 		listControl->addItem(checkBox);
 	}
-}
-
-void InGameOptions::loadNextList()
-{
-	curId++;
-	if (curId > 1)
-	{
-		curId = 0;
-	}
-	loadList(curId);
 }
 
 void InGameOptions::begin()
@@ -213,7 +154,7 @@ void InGameOptions::begin()
 
 	menuform->findControlTyped<Label>("TEXT_FUNDS")->setText(state->getPlayerBalance());
 
-	loadList(0);
+	loadList();
 }
 
 void InGameOptions::pause() {}
@@ -249,9 +190,10 @@ void InGameOptions::eventOccurred(Event *e)
 
 	if (e->type() == EVENT_KEY_DOWN)
 	{
-		if (e->keyboard().KeyCode == SDLK_ESCAPE)
+		if (e->keyboard().KeyCode == SDLK_ESCAPE || e->keyboard().KeyCode == SDLK_RETURN ||
+		    e->keyboard().KeyCode == SDLK_KP_ENTER)
 		{
-			fw().stageQueueCommand({StageCmd::Command::POP});
+			menuform->findControl("BUTTON_OK")->click();
 			return;
 		}
 	}
@@ -293,7 +235,7 @@ void InGameOptions::eventOccurred(Event *e)
 		}
 		if (e->forms().RaisedBy->Name == "BUTTON_NEXT_LIST")
 		{
-			loadNextList();
+			fw().stageQueueCommand({StageCmd::Command::PUSH, mksp<MoreOptions>(state)});
 			return;
 		}
 		if (e->forms().RaisedBy->Name == "BUTTON_CHEATS")
@@ -309,7 +251,9 @@ void InGameOptions::eventOccurred(Event *e)
 			    {StageCmd::Command::PUSH,
 			     mksp<MessageBox>(tr("Abort Mission"),
 			                      format("%s %d", tr("Units Lost :"), unitsLost),
-			                      MessageBox::ButtonOptions::YesNo, [this] {
+			                      MessageBox::ButtonOptions::YesNo,
+			                      [this]
+			                      {
 				                      state->current_battle->abortMission(*state);
 				                      Battle::finishBattle(*state);
 				                      fw().stageQueueCommand({StageCmd::Command::REPLACEALL,

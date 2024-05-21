@@ -35,13 +35,18 @@ void dumpOptionsToLog()
 	dumpOption(audioGlobalGainOption);
 	dumpOption(audioSampleGainOption);
 	dumpOption(audioMusicGainOption);
+	dumpOption(audioConcurrentSampleCount);
 	dumpOption(screenWidthOption);
 	dumpOption(screenHeightOption);
 	dumpOption(screenFullscreenOption);
+	dumpOption(screenModeOption);
+	dumpOption(screenDisplayNumberOption);
 	dumpOption(screenScaleXOption);
 	dumpOption(screenScaleYOption);
+	dumpOption(screenAutoScale);
 	dumpOption(languageOption);
 
+	dumpOption(targetFPS);
 	dumpOption(frameLimit);
 	dumpOption(swapInterval);
 
@@ -49,6 +54,7 @@ void dumpOptionsToLog()
 	dumpOption(actionMusicOption);
 	dumpOption(autoExecuteOption);
 	dumpOption(toolTipDelay);
+	dumpOption(vanillaToggle);
 
 	dumpOption(optionPauseOnUfoSpotted);
 	dumpOption(optionPauseOnVehicleLightDamage);
@@ -69,6 +75,7 @@ void dumpOptionsToLog()
 	dumpOption(optionPauseOnVehicleRefuelled);
 	dumpOption(optionPauseOnNotEnoughFuel);
 	dumpOption(optionPauseOnUnauthorizedVehicle);
+	dumpOption(optionPauseOnBaseDestroyed);
 	dumpOption(optionPauseOnHostileSpotted);
 	dumpOption(optionPauseOnHostileDied);
 	dumpOption(optionPauseOnUnknownDied);
@@ -88,9 +95,11 @@ void dumpOptionsToLog()
 	dumpOption(optionPauseOnAgentPsiControlled);
 	dumpOption(optionPauseOnAgentPsiOver);
 
+	dumpOption(optionDebugCommandsVisible);
 	dumpOption(optionUFODamageModel);
 	dumpOption(optionInstantExplosionDamage);
 	dumpOption(optionGravliftSounds);
+	dumpOption(optionNoScrollSounds);
 	dumpOption(optionNoInstantThrows);
 	dumpOption(optionFerryChecksRelationshipWhenBuying);
 	dumpOption(optionAllowManualCityTeleporters);
@@ -122,6 +131,16 @@ void dumpOptionsToLog()
 	dumpOption(optionSkipTurbo);
 	dumpOption(optionRunAndKneel);
 	dumpOption(optionSeedRng);
+	dumpOption(optionAutoReload);
+	dumpOption(optionLeftClickIcon);
+	dumpOption(optionBattlescapeVertScroll);
+	dumpOption(optionSingleSquadSelect);
+	dumpOption(optionATVUFOMission);
+	dumpOption(optionMaxTileRepair);
+	dumpOption(optionSceneryRepairCostFactor);
+	dumpOption(optionLoadSameAmmo);
+	dumpOption(optionShowCurrentDimensionVehicles);
+	dumpOption(optionShowNonXCOMVehiclesPrefix);
 
 	dumpOption(optionStunHostileAction);
 	dumpOption(optionRaidHostileAction);
@@ -205,19 +224,31 @@ ConfigOptionInt audioGlobalGainOption("Framework.Audio", "GlobalGain", "Global a
 ConfigOptionInt audioSampleGainOption("Framework.Audio", "SampleGain", "Sample audio gain (0-20)",
                                       20);
 ConfigOptionInt audioMusicGainOption("Framework.Audio", "MusicGain", "Music audio gain (0-20)", 20);
+ConfigOptionInt audioConcurrentSampleCount("Framework.Audio", "ConcurrentSamples",
+                                           "The number of concurrent samples to play at one time",
+                                           10);
 ConfigOptionInt screenWidthOption("Framework.Screen", "Width", "Initial screen width (in pixels)",
                                   1280);
 ConfigOptionInt screenHeightOption("Framework.Screen", "Height",
                                    "Initial screen height (in pixels)", 720);
-ConfigOptionBool screenFullscreenOption("Framework.Screen", "Fullscreen", "Enable fullscreen mode",
-                                        false);
+ConfigOptionBool screenFullscreenOption("Framework.Screen", "Fullscreen",
+                                        "Deprecated: use ScreenMode instead", false);
+ConfigOptionString screenModeOption("Framework.Screen", "Mode",
+                                    "Mode: {windowed,fullscreen,borderless}", "windowed");
+ConfigOptionInt screenDisplayNumberOption("Framework.Screen", "Display",
+                                          "Display number in multi-monitor setup (0..n)", 0);
 ConfigOptionInt screenScaleXOption("Framework.Screen", "ScaleX",
                                    "Scale screen in X direction by (percent)", 100);
 ConfigOptionInt screenScaleYOption("Framework.Screen", "ScaleY",
                                    "Scale screen in Y direction by (percent)", 100);
+ConfigOptionBool screenAutoScale(
+    "Framework.Screen", "AutoScale",
+    "Automatically scale up game viewport for modern screens (overrides ScaleX and ScaleY)", false);
 ConfigOptionString languageOption("Framework", "Language",
                                   "The language used ingame (empty for system default)", "");
 
+ConfigOptionInt targetFPS("Framework", "TargetFPS", "The target FPS count - affects game speed!",
+                          60);
 ConfigOptionInt frameLimit("Framework", "FrameLimit", "Quit after this many frames - 0 = unlimited",
                            0);
 ConfigOptionInt swapInterval("Framework", "SwapInterval",
@@ -233,6 +264,7 @@ ConfigOptionBool autoExecuteOption("Options.Misc", "AutoExecute",
 ConfigOptionInt toolTipDelay("Options.Misc", "ToolTipDelay",
                              "Delay in milliseconds before showing tooltips (<= 0 to disable)",
                              500);
+ConfigOptionBool vanillaToggle("Options.Misc", "VanillaToggle", "Toggle vanilla mode", false);
 
 ConfigOptionBool optionPauseOnUfoSpotted("Notifications.City", "UfoSpotted", "UFO spotted", true);
 ConfigOptionBool optionPauseOnVehicleLightDamage("Notifications.City", "VehicleLightDamage",
@@ -271,6 +303,8 @@ ConfigOptionBool optionPauseOnNotEnoughFuel("Notifications.City", "NotEnoughFuel
                                             "Not enough fuel to refuel vehicle", true);
 ConfigOptionBool optionPauseOnUnauthorizedVehicle("Notifications.City", "UnauthorizedVehicle",
                                                   "Unauthorized vehicle detected", true);
+ConfigOptionBool optionPauseOnBaseDestroyed("Notifications.City", "BaseDestroyed",
+                                            "X-COM base destroyed by hostile forces.", true);
 ConfigOptionBool optionPauseOnHostileSpotted("Notifications.Battle", "HostileSpotted",
                                              "Hostile unit spotted", true);
 ConfigOptionBool optionPauseOnHostileDied("Notifications.Battle", "HostileDied",
@@ -308,13 +342,16 @@ ConfigOptionBool optionPauseOnAgentPsiControlled("Notifications.Battle", "AgentP
                                                  "Unit under Psionic control", true);
 ConfigOptionBool optionPauseOnAgentPsiOver("Notifications.Battle", "AgentPsiOver",
                                            "Unit freed from Psionic control", true);
-
+ConfigOptionBool optionDebugCommandsVisible("OpenApoc.NewFeature", "DebugCommandsVisible",
+                                            "Show the debug commands on screen", true);
 ConfigOptionBool optionUFODamageModel("OpenApoc.NewFeature", "UFODamageModel",
                                       "X-Com 1 Damage model (0-200%)", false);
 ConfigOptionBool optionInstantExplosionDamage("OpenApoc.NewFeature", "InstantExplosionDamage",
                                               "Explosions damage instantly", false);
 ConfigOptionBool optionGravliftSounds("OpenApoc.NewFeature", "GravliftSounds", "Gravlift sounds",
                                       true);
+ConfigOptionBool optionNoScrollSounds("OpenApoc.NewFeature", "NoScrollSounds",
+                                      "Disable scrolling sounds", false);
 ConfigOptionBool optionNoInstantThrows("OpenApoc.NewFeature", "NoInstantThrows",
                                        "Throwing requires proper facing and pose", true);
 ConfigOptionBool optionFerryChecksRelationshipWhenBuying(
@@ -353,8 +390,9 @@ ConfigOptionBool optionEnableAgentTemplates("OpenApoc.NewFeature", "EnableAgentT
 ConfigOptionBool optionStoreDroppedEquipment("OpenApoc.NewFeature", "StoreDroppedEquipment",
                                              "Attempt to recover agent equipment dropped in city",
                                              true);
-ConfigOptionBool optionFallingGroundVehicles("OpenApoc.NewFeature", "CrashingGroundVehicles",
-                                             "Unsupported ground vehicles crash", true);
+ConfigOptionBool optionFallingGroundVehicles(
+    "OpenApoc.NewFeature", "CrashingGroundVehicles",
+    "Unsupported ground vehicles crash (Weapons and Modules may be lost in crash)", true);
 
 ConfigOptionBool optionEnforceCargoLimits("OpenApoc.NewFeature", "EnforceCargoLimits",
                                           "Enforce vehicle cargo limits", false);
@@ -373,15 +411,47 @@ ConfigOptionBool
                                      "Any hit on hostile building provokes retaliation", false);
 ConfigOptionBool optionMarketRight("OpenApoc.NewFeature", "MarketOnRight",
                                    "Put market stock on the right side", true);
-ConfigOptionBool optionDGCrashingVehicles("OpenApoc.NewFeature", "CrashingDimensionGate",
-                                          "Uncapable vehicles crash when entering gates", true);
-ConfigOptionBool optionFuelCrashingVehicles("OpenApoc.NewFeature", "CrashingOutOfFuel",
-                                            "Vehicles crash when out of fuel", true);
+ConfigOptionBool optionDGCrashingVehicles(
+    "OpenApoc.NewFeature", "CrashingDimensionGate",
+    "Uncapable vehicles crash when entering gates (Weapons and Modules may be lost in crash)",
+    true);
+ConfigOptionBool optionFuelCrashingVehicles(
+    "OpenApoc.NewFeature", "CrashingOutOfFuel",
+    "Vehicles crash when out of fuel (Weapons and Modules may be lost in crash)", true);
 ConfigOptionBool optionSkipTurbo("OpenApoc.NewFeature", "SkipTurboMovement",
                                  "Skip turbo movement calculations", false);
 ConfigOptionBool optionRunAndKneel("OpenApoc.NewFeature", "RunAndKneel",
                                    "All units run and kneel by default", false);
 ConfigOptionBool optionSeedRng("OpenApoc.NewFeature", "SeedRng", "Seed RNG on game start", true);
+ConfigOptionBool optionAutoReload("OpenApoc.NewFeature", "AutoReload",
+                                  "Automatically reload weapons when empty", true);
+ConfigOptionBool optionLeftClickIcon("OpenApoc.NewFeature", "LeftClickIconEquip",
+                                     "Left clicking icon opens equip menu", false);
+ConfigOptionBool optionBattlescapeVertScroll("OpenApoc.NewFeature", "BattlescapeVertScroll",
+                                             "Mousewheel changes vertical level in battlescape",
+                                             true);
+ConfigOptionBool optionSingleSquadSelect("OpenApoc.NewFeature", "SingleSquadSelect",
+                                         "Select squad with single click", false);
+ConfigOptionBool
+    optionATVUFOMission("OpenApoc.NewFeature", "ATVUFOMission",
+                        tr("Allow All Terrain Vehicles (ATV) to initiate UFO recovery missions"),
+                        false);
+ConfigOptionInt
+    optionMaxTileRepair("OpenApoc.Mod", "MaxTileRepair",
+                        "Construction Vehicles will repair a maximum of X Tiles per night", 5);
+ConfigOptionFloat
+    optionSceneryRepairCostFactor("OpenApoc.Mod", "SceneryRepairCostFactor",
+                                  "Determines the percentage of the original Price ORGs have to "
+                                  "pay for a Scenery Tile to be repaired",
+                                  10.0f);
+ConfigOptionBool optionLoadSameAmmo("OpenApoc.NewFeature", "LoadSameAmmo",
+                                    "Weapons autoreload only same ammo type", false);
+ConfigOptionBool
+    optionShowCurrentDimensionVehicles("OpenApoc.NewFeature", "ShowCurrentDimensionVehicles",
+                                       "Show vehicles in current dimension (or entering / leaving)",
+                                       true);
+ConfigOptionBool optionShowNonXCOMVehiclesPrefix("OpenApoc.NewFeature", "ShowNonXCOMVehiclesPrefix",
+                                                 tr("Add prefix to non-X-COM vehicles"), true);
 
 ConfigOptionBool optionStunHostileAction("OpenApoc.Mod", "StunHostileAction",
                                          "Stunning hurts relationships", false);
@@ -397,12 +467,14 @@ ConfigOptionBool optionATVTank("OpenApoc.Mod", "ATVTank", "(MOD) Griffon becomes
 ConfigOptionBool optionATVAPC("OpenApoc.Mod", "ATVAPC", "(MOD) Wolfhound APC becomes All-Terrain",
                               true);
 
-ConfigOptionBool optionCrashingVehicles("OpenApoc.Mod", "CrashingVehicles",
-                                        "Vehicles crash on low HP", false);
+ConfigOptionBool
+    optionCrashingVehicles("OpenApoc.Mod", "CrashingVehicles",
+                           "Vehicles crash on low HP (Weapons and Modules may be lost in crash)",
+                           false);
 
 ConfigOptionString optionScriptsList("OpenApoc.Mod", "ScriptsList",
                                      "Semicolon-separated list of scripts to load",
-                                     "data/scripts/openapoc_base.lua;");
+                                     "scripts/openapoc_base.lua;");
 
 ConfigOptionBool optionInfiniteAmmoCheat("OpenApoc.Cheat", "InfiniteAmmo",
                                          "Infinite ammo for X-Com agents and vehicles", false);

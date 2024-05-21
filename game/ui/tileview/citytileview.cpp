@@ -6,7 +6,6 @@
 #include "framework/keycodes.h"
 #include "framework/palette.h"
 #include "framework/renderer.h"
-#include "framework/trace.h"
 #include "game/state/city/agentmission.h"
 #include "game/state/city/base.h"
 #include "game/state/city/building.h"
@@ -29,10 +28,10 @@ namespace OpenApoc
 CityTileView::CityTileView(TileMap &map, Vec3<int> isoTileSize, Vec2<int> stratTileSize,
                            TileViewMode initialMode, Vec3<float> screenCenterTile,
                            GameState &gameState)
-    : TileView(map, isoTileSize, stratTileSize, initialMode), state(gameState),
+    : TileView(map, isoTileSize, stratTileSize, initialMode),
       day_palette(fw().data->loadPalette("xcom3/ufodata/pal_01.dat")),
       twilight_palette(fw().data->loadPalette("xcom3/ufodata/pal_02.dat")),
-      night_palette(fw().data->loadPalette("xcom3/ufodata/pal_03.dat"))
+      night_palette(fw().data->loadPalette("xcom3/ufodata/pal_03.dat")), state(gameState)
 {
 	std::vector<sp<Palette>> newPal;
 	newPal.resize(3);
@@ -127,6 +126,11 @@ void CityTileView::eventOccurred(Event *e)
 					DEBUG_SHOW_ALIEN = !DEBUG_SHOW_ALIEN;
 					return;
 				}
+				case SDLK_p:
+				{
+					DEBUG_SHOW_VEHICLE_TARGETS = !DEBUG_SHOW_VEHICLE_TARGETS;
+					return;
+				}
 				case SDLK_F2:
 				{
 					DEBUG_SHOW_ROAD_PATHFINDING = !DEBUG_SHOW_ROAD_PATHFINDING;
@@ -164,7 +168,7 @@ void CityTileView::eventOccurred(Event *e)
 						DEBUG_SHOW_ALIEN_CREW = false;
 						DEBUG_LAYER = -1;
 					}
-					LogWarning("Debug walk type display set to %s", DEBUG_SHOW_MISC_TYPE);
+					LogWarning("Debug walk type display set to %d", DEBUG_SHOW_MISC_TYPE);
 					return;
 				}
 				case SDLK_F5:
@@ -296,7 +300,6 @@ void CityTileView::eventOccurred(Event *e)
 
 void CityTileView::render()
 {
-	TRACE_FN;
 	Renderer &r = *fw().renderer;
 	r.clear();
 
@@ -331,9 +334,8 @@ void CityTileView::render()
 			// List of vehicles that require drawing of brackets
 			std::set<sp<Vehicle>> vehiclesToDrawBrackets;
 			std::map<sp<Vehicle>, int> vehiclesBracketsIndex;
-
 			// Go through every selected vehicle and add target to list of bracket draws
-			for (auto &vehicle : state.current_city->cityViewSelectedVehicles)
+			for (auto &vehicle : state.current_city->cityViewSelectedOwnedVehicles)
 			{
 				if (vehicle->owner != state.getPlayer())
 				{
@@ -341,21 +343,21 @@ void CityTileView::render()
 				}
 				for (auto &m : vehicle->missions)
 				{
-					if (m->type == VehicleMission::MissionType::AttackVehicle ||
-					    m->type == VehicleMission::MissionType::RecoverVehicle)
+					if (m.type == VehicleMission::MissionType::AttackVehicle ||
+					    m.type == VehicleMission::MissionType::RecoverVehicle)
 					{
-						if (m->targetVehicle)
+						if (m.targetVehicle)
 						{
-							vehiclesToDrawBrackets.insert(m->targetVehicle);
-							vehiclesBracketsIndex[m->targetVehicle] = 2;
+							vehiclesToDrawBrackets.insert(m.targetVehicle);
+							vehiclesBracketsIndex[m.targetVehicle] = 2;
 						}
 					}
-					else if (m->type == VehicleMission::MissionType::FollowVehicle)
+					else if (m.type == VehicleMission::MissionType::FollowVehicle)
 					{
-						if (m->targetVehicle)
+						if (m.targetVehicle)
 						{
-							vehiclesToDrawBrackets.insert(m->targetVehicle);
-							vehiclesBracketsIndex[m->targetVehicle] = 3;
+							vehiclesToDrawBrackets.insert(m.targetVehicle);
+							vehiclesBracketsIndex[m.targetVehicle] = 3;
 						}
 					}
 				}
@@ -384,16 +386,18 @@ void CityTileView::render()
 										auto v = std::static_pointer_cast<TileObjectVehicle>(obj)
 										             ->getVehicle();
 
-										if (!state.current_city->cityViewSelectedVehicles.empty())
+										if (!state.current_city->cityViewSelectedOwnedVehicles
+										         .empty())
 										{
 											auto selectedPos = std::find(
-											    state.current_city->cityViewSelectedVehicles
+											    state.current_city->cityViewSelectedOwnedVehicles
 											        .begin(),
-											    state.current_city->cityViewSelectedVehicles.end(),
+											    state.current_city->cityViewSelectedOwnedVehicles
+											        .end(),
 											    v);
 
 											if (selectedPos ==
-											    state.current_city->cityViewSelectedVehicles
+											    state.current_city->cityViewSelectedOwnedVehicles
 											        .begin())
 											{
 												if (v->owner == state.getPlayer())
@@ -403,8 +407,8 @@ void CityTileView::render()
 												}
 											}
 											else if (selectedPos !=
-											         state.current_city->cityViewSelectedVehicles
-											             .end())
+											         state.current_city
+											             ->cityViewSelectedOwnedVehicles.end())
 											{
 												vehiclesToDrawBrackets.insert(v);
 												vehiclesBracketsIndex[v] = 1;
@@ -581,12 +585,12 @@ void CityTileView::render()
 										hostile = state.getPlayer()->isRelatedTo(v->owner) ==
 										          Organisation::Relation::Hostile;
 										bool selected =
-										    std::find(
-										        state.current_city->cityViewSelectedVehicles
-										            .begin(),
-										        state.current_city->cityViewSelectedVehicles.end(),
-										        v) !=
-										    state.current_city->cityViewSelectedVehicles.end();
+										    std::find(state.current_city
+										                  ->cityViewSelectedOwnedVehicles.begin(),
+										              state.current_city
+										                  ->cityViewSelectedOwnedVehicles.end(),
+										              v) !=
+										    state.current_city->cityViewSelectedOwnedVehicles.end();
 
 										if (friendly)
 										{
@@ -694,16 +698,11 @@ void CityTileView::render()
 				{
 					continue;
 				}
-				bool selected =
-				    std::find(state.current_city->cityViewSelectedAgents.begin(),
-				              state.current_city->cityViewSelectedAgents.end(),
-				              a.second) != state.current_city->cityViewSelectedAgents.end();
-
 				for (auto &m : a.second->missions)
 				{
-					if (m->type == AgentMission::MissionType::GotoBuilding)
+					if (m.type == AgentMission::MissionType::GotoBuilding)
 					{
-						targetLocationsToDraw.emplace_back(m->targetBuilding->crewQuarters,
+						targetLocationsToDraw.emplace_back(m.targetBuilding->crewQuarters,
 						                                   a.second->position, true, false);
 						break;
 					}
@@ -717,9 +716,9 @@ void CityTileView::render()
 					continue;
 				}
 				bool selected =
-				    std::find(state.current_city->cityViewSelectedVehicles.begin(),
-				              state.current_city->cityViewSelectedVehicles.end(),
-				              v.second) != state.current_city->cityViewSelectedVehicles.end();
+				    std::find(state.current_city->cityViewSelectedOwnedVehicles.begin(),
+				              state.current_city->cityViewSelectedOwnedVehicles.end(),
+				              v.second) != state.current_city->cityViewSelectedOwnedVehicles.end();
 
 				// Draw those in buildings
 				if (v.second->currentBuilding)
@@ -736,35 +735,42 @@ void CityTileView::render()
 				// Destinations
 				for (auto &m : v.second->missions)
 				{
-					switch (m->type)
+					switch (m.type)
 					{
 						case VehicleMission::MissionType::AttackVehicle:
+						case VehicleMission::MissionType::RecoverVehicle:
 						{
-							if (!m->targetVehicle)
+							if (!m.targetVehicle)
 								break;
-							vehiclesUnderAttack.insert(m->targetVehicle);
-							targetLocationsToDraw.emplace_back(m->targetVehicle->position,
+							vehiclesUnderAttack.insert(m.targetVehicle);
+							targetLocationsToDraw.emplace_back(m.targetVehicle->position,
 							                                   v.second->position, false, true);
 							break;
 						}
 						case VehicleMission::MissionType::FollowVehicle:
 						{
-							if (!m->targetVehicle)
+							if (!m.targetVehicle)
 								break;
-							targetLocationsToDraw.emplace_back(m->targetVehicle->position,
+							targetLocationsToDraw.emplace_back(m.targetVehicle->position,
 							                                   v.second->position, false, false);
 							break;
 						}
 						case VehicleMission::MissionType::AttackBuilding:
 						case VehicleMission::MissionType::GotoBuilding:
-							buildingsSelected.insert(m->targetBuilding);
-						// Intentional fall-through
+						case VehicleMission::MissionType::Land:
+						case VehicleMission::MissionType::OfferService:
+						case VehicleMission::MissionType::InvestigateBuilding:
+							if (m.targetBuilding)
+							{
+								buildingsSelected.insert(m.targetBuilding);
+							}
+							[[fallthrough]];
 						case VehicleMission::MissionType::Crash:
 						{
-							if (!m->currentPlannedPath.empty())
+							if (!m.currentPlannedPath.empty())
 							{
 								targetLocationsToDraw.emplace_back(
-								    (Vec3<float>)m->currentPlannedPath.back() +
+								    (Vec3<float>)m.currentPlannedPath.back() +
 								        Vec3<float>{0.5f, 0.5f, 0.0f},
 								    v.second->position, true, false);
 							}
@@ -774,10 +780,21 @@ void CityTileView::render()
 						case VehicleMission::MissionType::InfiltrateSubvert:
 						case VehicleMission::MissionType::Patrol:
 						case VehicleMission::MissionType::GotoPortal:
+						case VehicleMission::MissionType::Teleport:
+						case VehicleMission::MissionType::DepartToSpace:
 						{
-							targetLocationsToDraw.emplace_back((Vec3<float>)m->targetLocation +
+							targetLocationsToDraw.emplace_back((Vec3<float>)m.targetLocation +
 							                                       Vec3<float>{0.5f, 0.5f, 0.0f},
 							                                   v.second->position, true, false);
+							break;
+						}
+						case VehicleMission::MissionType::Snooze:
+						case VehicleMission::MissionType::RestartNextMission:
+						case VehicleMission::MissionType::TakeOff:
+						case VehicleMission::MissionType::SelfDestruct:
+						case VehicleMission::MissionType::ArriveFromDimensionGate:
+						{
+							// These have no destination to draw
 							break;
 						}
 					}
@@ -818,10 +835,10 @@ void CityTileView::render()
 				if (selectionFrameTicksAccumulated / SELECTION_FRAME_ANIMATION_DELAY)
 				{
 					bool selected =
-					    !state.current_city->cityViewSelectedAgents.empty() &&
-					    std::find(state.current_city->cityViewSelectedAgents.begin(),
-					              state.current_city->cityViewSelectedAgents.end(),
-					              a.second) != state.current_city->cityViewSelectedAgents.end();
+					    !state.current_city->cityViewSelectedSoldiers.empty() &&
+					    std::find(state.current_city->cityViewSelectedSoldiers.begin(),
+					              state.current_city->cityViewSelectedSoldiers.end(),
+					              a.second) != state.current_city->cityViewSelectedSoldiers.end();
 					if (selected)
 					{
 						r.draw(selectionImageFriendlySmall,

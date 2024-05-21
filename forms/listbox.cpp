@@ -13,8 +13,7 @@ ListBox::ListBox() : ListBox(nullptr) {}
 ListBox::ListBox(sp<ScrollBar> ExternalScrollBar)
     : Control(), scroller_is_internal(ExternalScrollBar == nullptr), scroller(ExternalScrollBar),
       ItemSize(64), ItemSpacing(1), ListOrientation(Orientation::Vertical),
-      ScrollOrientation(ListOrientation), HoverColour(0, 0, 0, 0), SelectedColour(0, 0, 0, 0),
-      AlwaysEmitSelectionEvents(false)
+      ScrollOrientation(ListOrientation), HoverColour(0, 0, 0, 0), SelectedColour(0, 0, 0, 0)
 {
 }
 
@@ -57,15 +56,12 @@ void ListBox::onRender()
 		auto ctrl = *c;
 		if (ctrl != scroller && ctrl->isVisible())
 		{
-			ctrl->Location = controlOffset - this->scrollOffset;
-
 			if (ListOrientation == ScrollOrientation && ItemSize != 0)
 			{
 				switch (ScrollOrientation)
 				{
 					case Orientation::Vertical:
 						ctrl->Size.x = (scroller_is_internal ? scroller->Location.x : this->Size.x);
-						ctrl->Size.y = ItemSize;
 						break;
 					case Orientation::Horizontal:
 						ctrl->Size.x = ItemSize;
@@ -77,20 +73,24 @@ void ListBox::onRender()
 			switch (ListOrientation)
 			{
 				case Orientation::Vertical:
-					controlOffset.y += ctrl->Size.y + ItemSpacing;
-					if (ListOrientation != ScrollOrientation && controlOffset.y >= Size.y)
+					if (ListOrientation != ScrollOrientation &&
+					    controlOffset.y + ctrl->Size.y > Size.y)
 					{
 						controlOffset.y = 0;
 						controlOffset.x += ctrl->Size.x + ItemSpacing;
 					}
+					ctrl->Location = controlOffset - this->scrollOffset;
+					controlOffset.y += ctrl->Size.y + ItemSpacing;
 					break;
 				case Orientation::Horizontal:
-					controlOffset.x += ctrl->Size.x + ItemSpacing;
-					if (ListOrientation != ScrollOrientation && controlOffset.x >= Size.x)
+					if (ListOrientation != ScrollOrientation &&
+					    controlOffset.x + ctrl->Size.x > Size.x)
 					{
 						controlOffset.x = 0;
 						controlOffset.y += ctrl->Size.y + ItemSpacing;
 					}
+					ctrl->Location = controlOffset - this->scrollOffset;
+					controlOffset.x += ctrl->Size.x + ItemSpacing;
 					break;
 			}
 		}
@@ -106,7 +106,7 @@ void ListBox::onRender()
 			scroller->setMaximum(std::max(controlOffset.x - this->Size.x, scroller->getMinimum()));
 			break;
 	}
-	scroller->updateLargeChangeValue();
+	scroller->updateScrollChangeValue();
 }
 
 void ListBox::postRender()
@@ -156,20 +156,9 @@ void ListBox::eventOccured(Event *e)
 		sp<Control> child = ctrl->getAncestor(shared_from_this());
 		if (e->forms().EventFlag == FormEventType::MouseMove)
 		{
-			// FIXME: Scrolling amount should match wheel amount
-			// Should wheel orientation match as well? Who has horizontal scrolls??
-			if (ctrl == shared_from_this() || child != nullptr)
+			if (scroller && (ctrl == shared_from_this() || child != nullptr))
 			{
-				int wheelDelta =
-				    e->forms().MouseInfo.WheelVertical + e->forms().MouseInfo.WheelHorizontal;
-				if (wheelDelta > 0)
-				{
-					scroller->scrollPrev();
-				}
-				else if (wheelDelta < 0)
-				{
-					scroller->scrollNext();
-				}
+				scroller->scrollWheel(e);
 			}
 			if (ctrl == shared_from_this() || ctrl == scroller)
 			{
@@ -183,11 +172,11 @@ void ListBox::eventOccured(Event *e)
 		}
 		else if (e->forms().EventFlag == FormEventType::MouseDown)
 		{
-			if (ctrl == shared_from_this() || ctrl == scroller)
+			if (ctrl == shared_from_this() || ctrl == scroller || ctrl != child)
 			{
 				child = nullptr;
 			}
-			if ((AlwaysEmitSelectionEvents || selected != child) && child != nullptr)
+			if (selected != child && child != nullptr)
 			{
 				selected = child;
 				this->pushFormEvent(FormEventType::ListBoxChangeSelected, e);
@@ -212,15 +201,8 @@ void ListBox::update()
 		{
 			case Orientation::Vertical:
 			{
-				if (ItemSize == 0)
-				{
-					for (const auto &i : Controls)
-						scrollerLength += i->Size.y;
-				}
-				else
-				{
-					scrollerLength += Controls.size() * ItemSize;
-				}
+				for (const auto &i : Controls)
+					scrollerLength += i->Size.y;
 				scrollerLength = scrollerLength > Size.y ? scrollerLength - Size.y : 0;
 				break;
 			}
@@ -287,7 +269,7 @@ void ListBox::addItem(sp<Control> Item)
 	Item->setParent(shared_from_this());
 	Item->ToolTipFont = this->ToolTipFont;
 	resolveLocation();
-	if (selected == nullptr)
+	if (selected == nullptr && AutoSelect)
 	{
 		selected = Item;
 	}
@@ -341,7 +323,7 @@ sp<Control> ListBox::removeItem(sp<Control> Item)
 	{
 		if (*i == Item)
 		{
-			Controls.erase(i);
+			Item->setRemoved();
 			resolveLocation();
 			Item->setParent(nullptr);
 			return Item;
@@ -394,6 +376,7 @@ sp<Control> ListBox::copyTo(sp<Control> CopyParent)
 	copy->ScrollOrientation = this->ScrollOrientation;
 	copy->HoverColour = this->HoverColour;
 	copy->SelectedColour = this->SelectedColour;
+	copy->AutoSelect = this->AutoSelect;
 	copyControlData(copy);
 	return copy;
 }
@@ -470,6 +453,11 @@ void ListBox::configureSelfFromXml(pugi::xml_node *node)
 		uint8_t b = selColourNode.attribute("b").as_uint(0);
 		uint8_t a = selColourNode.attribute("a").as_uint(255);
 		SelectedColour = {r, g, b, a};
+	}
+	auto autoSelectNode = node->child("autoselect");
+	if (autoSelectNode)
+	{
+		AutoSelect = autoSelectNode.text().as_bool(true);
 	}
 }
 

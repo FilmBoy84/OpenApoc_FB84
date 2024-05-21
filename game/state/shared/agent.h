@@ -55,11 +55,16 @@ enum class TrainingAssignment
 	Psi
 };
 
-class Agent : public StateObject,
+enum class AgentStatus
+{
+	Alive,
+	Dead
+};
+
+class Agent : public StateObject<Agent>,
               public std::enable_shared_from_this<Agent>,
               public EquippableObject
 {
-	STATE_OBJECT(Agent)
   public:
 	Agent() = default;
 
@@ -79,6 +84,10 @@ class Agent : public StateObject,
 	                           // to equipment weight, used stamina etc)
 	bool overEncumbred = false;
 	Rank rank = Rank::Rookie;
+	AgentStatus status = AgentStatus::Alive;
+	GameTime hiredOn;
+	unsigned int missionCount = 0;
+	unsigned int killCount = 0;
 
 	unsigned int teleportTicksAccumulated = 0;
 	bool canTeleport() const;
@@ -90,7 +99,7 @@ class Agent : public StateObject,
 	TrainingAssignment trainingAssignment = TrainingAssignment::None;
 
 	bool recentlyHired = false;
-	bool recentryTransferred = false;
+	bool recentlyTransferred = false;
 	bool recentlyFought = false;
 	float healingProgress = 0.0f;
 
@@ -138,7 +147,7 @@ class Agent : public StateObject,
 
 	StateRef<BattleUnit> unit;
 
-	std::list<up<AgentMission>> missions;
+	std::list<AgentMission> missions;
 	std::list<sp<AEquipment>> equipment;
 	bool canAddEquipment(Vec2<int> pos, StateRef<AEquipmentType> equipmentType,
 	                     EquipmentSlotType &slotType) const;
@@ -172,9 +181,9 @@ class Agent : public StateObject,
 	bool isBrainsucker = false;
 
 	// Adds mission to list of missions, returns true if successful
-	bool addMission(GameState &state, AgentMission *mission, bool toBack = false);
+	bool addMission(GameState &state, AgentMission mission, bool toBack = false);
 	// Replaces all missions with provided mission, returns true if successful
-	bool setMission(GameState &state, AgentMission *mission);
+	bool setMission(GameState &state, AgentMission mission);
 
 	// Pops all finished missions, returns true if popped
 	bool popFinishedMissions(GameState &state);
@@ -183,6 +192,7 @@ class Agent : public StateObject,
 
 	void die(GameState &state, bool silent = false);
 	bool isDead() const;
+	void handleDeath(GameState &state);
 
 	// for agents spawned specifically for the current battle, like turrets
 	bool destroyAfterBattle = false;
@@ -226,6 +236,14 @@ class Agent : public StateObject,
 	sp<AEquipment> leftHandItem;  // Left hand item, frequently accessed so will be stored here
 	sp<AEquipment> rightHandItem; // Right hand item, frequently accessed so will be stored here
 
+	unsigned int getDaysInService(const GameState &state) const;
+	unsigned int getKills() const;
+	unsigned int getMissions() const;
+	unsigned int getMedalTier() const;
+
+	void incrementMissionCount();
+	void incrementKillCount();
+
 	void destroy() override;
 };
 
@@ -237,6 +255,9 @@ class AgentGenerator
 	std::map<AgentType::Gender, std::list<UString>> first_names;
 	std::list<UString> second_names;
 
+	// Create an agent of specified role available at the beginning of the game
+	StateRef<Agent> createInitAgent(GameState &state, StateRef<Organisation> org,
+	                                AgentType::Role role) const;
 	// Create an agent of specified role
 	StateRef<Agent> createAgent(GameState &state, StateRef<Organisation> org,
 	                            AgentType::Role role) const;

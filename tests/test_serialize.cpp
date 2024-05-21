@@ -6,6 +6,7 @@
 #include "game/state/gamestate_serialize.h"
 #include <iostream>
 #include <sstream>
+#include <thread>
 
 // We can't just use 'using namespace OpenApoc;' as:
 // On windows VS it says
@@ -172,7 +173,7 @@ int main(int argc, char **argv)
 		}
 		LogInfo("Using vehicle map for \"%s\"", vType->name);
 		v->type = {state.get(), vType};
-		v->name = format("%s %d", v->type->name, ++v->type->numCreated);
+		v->name = OpenApoc::format("%s %d", v->type->name, ++v->type->numCreated);
 		state->vehicles[vID] = v;
 
 		OpenApoc::StateRef<OpenApoc::Vehicle> enemyVehicle = {state.get(), vID};

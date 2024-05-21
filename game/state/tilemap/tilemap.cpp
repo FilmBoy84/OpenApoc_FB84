@@ -1,6 +1,5 @@
 #include "game/state/tilemap/tilemap.h"
 #include "framework/image.h"
-#include "framework/trace.h"
 #include "game/state/battle/battledoor.h"
 #include "game/state/battle/battlehazard.h"
 #include "game/state/battle/battleitem.h"
@@ -102,7 +101,7 @@ void TileMap::addObjectToMap(GameState &state, sp<Vehicle> vehicle)
 		shadow->setPosition(vehicle->getPosition());
 		vehicle->shadowObject = shadow;
 	}
-	if (vehicle->crashed)
+	if (vehicle->crashed && !vehicle->carriedByVehicle)
 	{
 		sp<Doodad> smoke = mksp<Doodad>(vehicle->position + SMOKE_DOODAD_SHIFT,
 		                                StateRef<DoodadType>{&state, "DOODAD_13_SMOKE_FUME"});

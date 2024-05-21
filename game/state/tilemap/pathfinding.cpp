@@ -1,4 +1,3 @@
-#include "framework/trace.h"
 #include "game/state/battle/battle.h"
 #include "game/state/battle/battleunit.h"
 #include "game/state/battle/battleunitmission.h"
@@ -17,7 +16,7 @@
 #include <glm/glm.hpp>
 
 // Show debug pathfinding output
-//#define PATHFINDING_DEBUG
+// #define PATHFINDING_DEBUG
 
 namespace OpenApoc
 {
@@ -143,7 +142,6 @@ std::list<Vec3<int>> TileMap::findShortestPath(Vec3<int> origin, Vec3<int> desti
 		t.pathfindingDebugFlag = false;
 #endif
 
-	TRACE_FN;
 	maxCost /= canEnterTileHelper.pathOverheadAlloawnce();
 	// Faster than looking up in a set
 	std::vector<bool> visitedTiles = std::vector<bool>(size.x * size.y * size.z, false);
@@ -384,7 +382,7 @@ std::list<Vec3<int>> TileMap::findShortestPath(Vec3<int> origin, Vec3<int> desti
 	{
 		if (maxCost > 0.0f)
 		{
-			LogInfo("Could not find path within maxPath, returning closest path ending at %s",
+			LogInfo("Could not find path within maxPath, returning closest path ending at %d",
 			        closestNodeSoFar->thisTile->position.x);
 		}
 		else
@@ -970,12 +968,14 @@ void Battle::groupMove(GameState &state, std::list<StateRef<BattleUnit>> &select
 	// Sort units based on proximity to target and speed
 
 	auto localUnits = selectedUnits;
-	localUnits.sort([targetLocation](const StateRef<BattleUnit> &a, const StateRef<BattleUnit> &b) {
-		return BattleUnitTileHelper::getDistanceStatic((Vec3<int>)a->position, targetLocation) /
-		           a->agent->modified_stats.getActualSpeedValue() <
-		       BattleUnitTileHelper::getDistanceStatic((Vec3<int>)b->position, targetLocation) /
-		           b->agent->modified_stats.getActualSpeedValue();
-	});
+	localUnits.sort(
+	    [targetLocation](const StateRef<BattleUnit> &a, const StateRef<BattleUnit> &b)
+	    {
+		    return BattleUnitTileHelper::getDistanceStatic((Vec3<int>)a->position, targetLocation) /
+		               a->agent->modified_stats.getActualSpeedValue() <
+		           BattleUnitTileHelper::getDistanceStatic((Vec3<int>)b->position, targetLocation) /
+		               b->agent->modified_stats.getActualSpeedValue();
+	    });
 
 	// Find the unit that will lead the group
 
@@ -1072,7 +1072,8 @@ void Battle::groupMove(GameState &state, std::list<StateRef<BattleUnit>> &select
 	// Sort remaining units based on proximity to target and speed
 	auto h = BattleUnitTileHelper(*map, *leadUnit);
 	localUnits.sort(
-	    [h, targetLocation](const StateRef<BattleUnit> &a, const StateRef<BattleUnit> &b) {
+	    [h, targetLocation](const StateRef<BattleUnit> &a, const StateRef<BattleUnit> &b)
+	    {
 		    return h.getDistance((Vec3<int>)a->position, targetLocation) /
 		               a->agent->modified_stats.getActualSpeedValue() <
 		           h.getDistance((Vec3<int>)b->position, targetLocation) /
@@ -1645,7 +1646,7 @@ void City::groupMove(GameState &state, std::list<StateRef<Vehicle>> &selectedVeh
 		return;
 	}
 	if (selectedVehicles.size() == 1 ||
-	    selectedVehicles.size() == 2 && selectedVehicles.front()->owner != state.getPlayer())
+	    (selectedVehicles.size() == 2 && selectedVehicles.front()->owner != state.getPlayer()))
 	{
 		auto v = selectedVehicles.front();
 		if (v->owner == state.getPlayer())
@@ -1718,7 +1719,7 @@ void City::fillRoadSegmentMap(GameState &state [[maybe_unused]])
 	tileToRoadSegmentMap.clear();
 	roadSegments.clear();
 	auto &m = *map;
-	auto helper = GroundVehicleTileHelper{m, VehicleType::Type::Road, false};
+	auto helper = GroundVehicleTileHelper{m, VehicleType::Type::Road};
 
 	// -2 means not processed, -1 means no road, otherwise segment index
 	tileToRoadSegmentMap.resize(m.size.x * m.size.y * m.size.z, -2);
@@ -1856,9 +1857,6 @@ void City::fillRoadSegmentMap(GameState &state [[maybe_unused]])
 											continue;
 										}
 										auto nextTile = m.getTile(nextPosition);
-										float thisCost = 0.0f;
-										bool unused = false;
-										bool jumped = false;
 										if (!helper.canEnterTile(thisTile, nextTile))
 										{
 											continue;

@@ -26,7 +26,7 @@ namespace OpenApoc
 static const unsigned TICKS_PER_PHYSICAL_TRAINING = 4 * TICKS_PER_HOUR;
 static const unsigned TICKS_PER_PSI_TRAINING = 4 * TICKS_PER_HOUR;
 
-sp<Agent> Agent::get(const GameState &state, const UString &id)
+template <> sp<Agent> StateObject<Agent>::get(const GameState &state, const UString &id)
 {
 	auto it = state.agents.find(id);
 	if (it == state.agents.end())
@@ -37,17 +37,17 @@ sp<Agent> Agent::get(const GameState &state, const UString &id)
 	return it->second;
 }
 
-const UString &Agent::getPrefix()
+template <> const UString &StateObject<Agent>::getPrefix()
 {
 	static UString prefix = "AGENT_";
 	return prefix;
 }
-const UString &Agent::getTypeName()
+template <> const UString &StateObject<Agent>::getTypeName()
 {
 	static UString name = "Agent";
 	return name;
 }
-const UString &Agent::getId(const GameState &state, const sp<Agent> ptr)
+template <> const UString &StateObject<Agent>::getId(const GameState &state, const sp<Agent> ptr)
 {
 	static const UString emptyString = "";
 	for (auto &a : state.agents)
@@ -55,8 +55,20 @@ const UString &Agent::getId(const GameState &state, const sp<Agent> ptr)
 		if (a.second == ptr)
 			return a.first;
 	}
-	LogError("No agent matching pointer %p", ptr.get());
+	LogError("No agent matching pointer %p", static_cast<void *>(ptr.get()));
 	return emptyString;
+}
+
+StateRef<Agent> AgentGenerator::createInitAgent(GameState &state, StateRef<Organisation> org,
+                                                AgentType::Role role) const
+{
+	std::list<sp<AgentType>> types;
+	for (auto &t : state.agent_types)
+		if (t.second->role == role && t.second->playable && t.second->availableAtTheGameStart)
+			types.insert(types.begin(), t.second);
+	auto type = pickRandom(state.rng, types);
+
+	return createAgent(state, org, {&state, AgentType::getId(state, type)});
 }
 
 StateRef<Agent> AgentGenerator::createAgent(GameState &state, StateRef<Organisation> org,
@@ -302,6 +314,10 @@ int Agent::getSkill() const
 		case AgentType::Role::Engineer:
 			skill = current_stats.engineering_skill;
 			break;
+		case AgentType::Role::Soldier:
+			// Soldiers can't be used for anything that uses a skill value
+			skill = 0;
+			break;
 	}
 
 	return skill;
@@ -386,6 +402,7 @@ void Agent::hire(GameState &state, StateRef<Building> newHome)
 	owner = newHome->owner;
 	homeBuilding = newHome;
 	recentlyHired = true;
+	hiredOn = state.gameTime;
 	setMission(state, AgentMission::gotoBuilding(state, *this, newHome, false, true));
 }
 
@@ -393,7 +410,7 @@ void Agent::transfer(GameState &state, StateRef<Building> newHome)
 {
 	homeBuilding = newHome;
 	recentlyHired = false;
-	recentryTransferred = true;
+	recentlyTransferred = true;
 	assigned_to_lab = false;
 	setMission(state, AgentMission::gotoBuilding(state, *this, newHome, false, true));
 }
@@ -835,12 +852,12 @@ void Agent::updateIsBrainsucker()
 	}
 }
 
-bool Agent::addMission(GameState &state, AgentMission *mission, bool toBack)
+bool Agent::addMission(GameState &state, AgentMission mission, bool toBack)
 {
 	if (missions.empty() || !toBack)
 	{
 		missions.emplace_front(mission);
-		missions.front()->start(state, *this);
+		missions.front().start(state, *this);
 	}
 	else
 	{
@@ -849,38 +866,53 @@ bool Agent::addMission(GameState &state, AgentMission *mission, bool toBack)
 	return true;
 }
 
-bool Agent::setMission(GameState &state, AgentMission *mission)
+bool Agent::setMission(GameState &state, AgentMission mission)
 {
 	for (auto &m : this->missions)
 	{
 		// if we're removing an InvestigateBuilding mission
 		// decrease the investigate count so the other investigating vehicles won't dangle
-		if (m->type == AgentMission::MissionType::InvestigateBuilding)
+		if (m.type == AgentMission::MissionType::InvestigateBuilding)
 		{
-			if (!m->isFinished(state, *this))
+			if (!m.isFinished(state, *this))
 			{
-				m->targetBuilding->decreasePendingInvestigatorCount(state);
+				m.targetBuilding->decreasePendingInvestigatorCount(state);
 			}
 		}
 	}
 	missions.clear();
 	missions.emplace_front(mission);
-	missions.front()->start(state, *this);
+	missions.front().start(state, *this);
 	return true;
 }
 
 bool Agent::popFinishedMissions(GameState &state)
 {
 	bool popped = false;
-	while (missions.size() > 0 && missions.front()->isFinished(state, *this))
+	while (missions.size() > 0)
 	{
-		LogWarning("Agent %s mission \"%s\" finished", name, missions.front()->getName());
+		// Prevent Building Investigator Count < 0
+		if (missions.front().type == AgentMission::MissionType::InvestigateBuilding)
+		{
+			if (!missions.front().isFinished(state, *this, false))
+			{
+				break;
+			}
+		}
+		else
+		{
+			if (!missions.front().isFinished(state, *this))
+			{
+				break;
+			}
+		}
+		LogWarning("Agent %s mission \"%s\" finished", name, missions.front().getName());
 		missions.pop_front();
 		popped = true;
 		if (!missions.empty())
 		{
-			LogWarning("Agent %s mission \"%s\" starting", name, missions.front()->getName());
-			missions.front()->start(state, *this);
+			LogWarning("Agent %s mission \"%s\" starting", name, missions.front().getName());
+			missions.front().start(state, *this);
 			continue;
 		}
 		else
@@ -896,7 +928,6 @@ bool Agent::getNewGoal(GameState &state)
 {
 	bool popped = false;
 	bool acquired = false;
-	Vec3<float> nextGoal;
 	// Pop finished missions if present
 	popped = popFinishedMissions(state);
 	do
@@ -904,7 +935,7 @@ bool Agent::getNewGoal(GameState &state)
 		// Try to get new destination
 		if (!missions.empty())
 		{
-			acquired = missions.front()->getNextDestination(state, *this, goalPosition);
+			acquired = missions.front().getNextDestination(state, *this, goalPosition);
 		}
 		// Pop finished missions if present
 		popped = popFinishedMissions(state);
@@ -915,8 +946,21 @@ bool Agent::getNewGoal(GameState &state)
 void Agent::die(GameState &state, bool silent)
 {
 	auto thisRef = StateRef<Agent>{&state, shared_from_this()};
-	// Actually die
+
+	// Set health to zero so agent will die on next update
 	modified_stats.health = 0;
+
+	// Remove from vehicle
+	if (currentVehicle)
+	{
+		currentVehicle->currentAgents.erase(thisRef);
+	}
+	// Remove from building
+	if (currentBuilding)
+	{
+		currentBuilding->currentAgents.erase(thisRef);
+	}
+
 	// Remove from lab
 	if (assigned_to_lab)
 	{
@@ -936,33 +980,47 @@ void Agent::die(GameState &state, bool silent)
 			}
 		}
 	}
-	// Remove from building
-	if (currentBuilding)
+
+	// In city (if not died in a vehicle) we make an event
+	if (!silent && !state.current_battle && owner == state.getPlayer())
 	{
-		currentBuilding->currentAgents.erase(thisRef);
-	}
-	// Remove from vehicle
-	if (currentVehicle)
-	{
-		currentVehicle->currentAgents.erase(thisRef);
-	}
-	// In city we remove agent
-	if (!state.current_battle)
-	{
-		// In city (if not died in a vehicle) we make an event
-		if (!silent && owner == state.getPlayer())
-		{
-			fw().pushEvent(
-			    new GameSomethingDiedEvent(GameEventType::AgentDiedCity, name, "", position));
-		}
-		state.agents.erase(getId(state, shared_from_this()));
+		fw().pushEvent(
+		    new GameSomethingDiedEvent(GameEventType::AgentDiedCity, name, "", position));
 	}
 }
 
 bool Agent::isDead() const { return getHealth() <= 0; }
 
+void Agent::handleDeath(GameState &state)
+{
+	if (isDead() && status == AgentStatus::Alive)
+	{
+		status = AgentStatus::Dead;
+
+		const auto thisRef = StateRef<Agent>{&state, shared_from_this()};
+
+		// Remove from building
+		if (currentBuilding && !state.current_battle)
+		{
+			currentBuilding->currentAgents.erase(thisRef);
+		}
+
+		// In city we remove agent
+		if (!state.current_battle)
+		{
+			state.agentsDeathNote.insert(getId(state, shared_from_this()));
+		}
+	}
+}
+
 void Agent::update(GameState &state, unsigned ticks)
 {
+	if (isDead() && status == AgentStatus::Alive)
+	{
+		handleDeath(state);
+		return;
+	}
+
 	if (isDead() || !city)
 	{
 		return;
@@ -982,7 +1040,7 @@ void Agent::update(GameState &state, unsigned ticks)
 	{
 		if (!this->missions.empty())
 		{
-			this->missions.front()->update(state, *this, ticks);
+			this->missions.front().update(state, *this, ticks);
 		}
 		popFinishedMissions(state);
 		updateMovement(state, ticks);
@@ -1023,12 +1081,12 @@ void Agent::updateHourly(GameState &state)
 	// Heal
 	if (modified_stats.health < current_stats.health && !recentlyFought)
 	{
-		int usage = base->getUsage(state, FacilityType::Capacity::Medical);
-		if (usage < 999)
+		auto usage = base->getUsage(state, FacilityType::Capacity::Medical);
+		if (usage < 999.f)
 		{
-			usage = std::max(100, usage);
+			usage = std::max(100.f, usage);
 			// As per Roger Wong's guide, healing is 0.8 points an hour
-			healingProgress += 80.0f / (float)usage;
+			healingProgress += 80.0f / usage;
 			if (healingProgress > 1.0f)
 			{
 				healingProgress -= 1.0f;
@@ -1039,14 +1097,14 @@ void Agent::updateHourly(GameState &state)
 	// Train
 	if (trainingAssignment != TrainingAssignment::None)
 	{
-		int usage = base->getUsage(state, trainingAssignment == TrainingAssignment::Physical
-		                                      ? FacilityType::Capacity::Training
-		                                      : FacilityType::Capacity::Psi);
-		if (usage < 999)
+		auto usage = base->getUsage(state, trainingAssignment == TrainingAssignment::Physical
+		                                       ? FacilityType::Capacity::Training
+		                                       : FacilityType::Capacity::Psi);
+		if (usage < 999.f)
 		{
-			usage = std::max(100, usage);
+			usage = std::max(100.f, usage);
 			// As per Roger Wong's guide
-			float mult = config().getFloat("OpenApoc.Cheat.StatGrowthMultiplier");
+			auto mult = config().getFloat("OpenApoc.Cheat.StatGrowthMultiplier");
 			if (trainingAssignment == TrainingAssignment::Physical)
 			{
 				trainPhysical(state, TICKS_PER_HOUR * 100 / usage * mult);
@@ -1223,29 +1281,27 @@ StateRef<AEquipmentType> Agent::getDominantItemInHands(GameState &state,
 	int e1Priority =
 	    e1->isFiring()
 	        ? 1440 - e1->weapon_fire_ticks_remaining
-	        : (e1->canFire(state) ? 4
-	                              : (e1->type->two_handed
-	                                     ? 3
-	                                     : (e1->type->type == AEquipmentType::Type::Weapon
-	                                            ? 2
-	                                            : (e1->type->type != AEquipmentType::Type::Ammo &&
-	                                               e1->type->type != AEquipmentType::Type::Armor &&
-	                                               e1->type->type != AEquipmentType::Type::Loot)
-	                                                  ? 1
-	                                                  : 0)));
+	        : (e1->canFire(state)
+	               ? 4
+	               : (e1->type->two_handed ? 3
+	                                       : (e1->type->type == AEquipmentType::Type::Weapon ? 2
+	                                          : (e1->type->type != AEquipmentType::Type::Ammo &&
+	                                             e1->type->type != AEquipmentType::Type::Armor &&
+	                                             e1->type->type != AEquipmentType::Type::Loot)
+	                                              ? 1
+	                                              : 0)));
 	int e2Priority =
 	    e2->isFiring()
 	        ? 1440 - e2->weapon_fire_ticks_remaining
-	        : (e2->canFire(state) ? 4
-	                              : (e2->type->two_handed
-	                                     ? 3
-	                                     : (e2->type->type == AEquipmentType::Type::Weapon
-	                                            ? 2
-	                                            : (e2->type->type != AEquipmentType::Type::Ammo &&
-	                                               e2->type->type != AEquipmentType::Type::Armor &&
-	                                               e2->type->type != AEquipmentType::Type::Loot)
-	                                                  ? 1
-	                                                  : 0)));
+	        : (e2->canFire(state)
+	               ? 4
+	               : (e2->type->two_handed ? 3
+	                                       : (e2->type->type == AEquipmentType::Type::Weapon ? 2
+	                                          : (e2->type->type != AEquipmentType::Type::Ammo &&
+	                                             e2->type->type != AEquipmentType::Type::Armor &&
+	                                             e2->type->type != AEquipmentType::Type::Loot)
+	                                              ? 1
+	                                              : 0)));
 	// Right hand has priority in case of a tie
 	if (e1Priority >= e2Priority)
 		return e1->type;
@@ -1413,5 +1469,20 @@ void Agent::destroy()
 		this->removeEquipment(state, equipment.front());
 	}
 }
+
+unsigned int Agent::getDaysInService(const GameState &state) const
+{
+	return state.gameTime.getDay() - hiredOn.getDay();
+}
+
+unsigned int Agent::getKills() const { return killCount; }
+
+unsigned int Agent::getMissions() const { return missionCount; }
+
+unsigned int Agent::getMedalTier() const { return 0; }
+
+void Agent::incrementMissionCount() { missionCount++; }
+
+void Agent::incrementKillCount() { killCount++; }
 
 } // namespace OpenApoc

@@ -1,6 +1,14 @@
 # check cmake version
 CMAKE_MINIMUM_REQUIRED(VERSION 3.9)
 
+# This changes the vcpkg features, so needs to be set before the first PROJECT() call
+option(BUILD_LAUNCHER "Build the launcher" ON)
+option(USE_SYSTEM_QT "Use the system-provided QT5 instead of installing the vcpkg package" OFF)
+
+if (BUILD_LAUNCHER AND NOT USE_SYSTEM_QT)
+		list(APPEND VCPKG_MANIFEST_FEATURES "launcher")
+endif()
+
 # project name, and type
 PROJECT(OpenApoc CXX C)
 
@@ -37,8 +45,8 @@ message("Using CD at \"${CD_PATH}\"")
 set(CMAKE_C_FLAGS_SANITIZE "-O1 -g -fsanitize=address")
 set(CMAKE_CXX_FLAGS_SANITIZE "-O1 -g -fsanitize=address")
 
-set(CMAKE_C_FLAGS_QUICK "-O1 -g0")
-set(CMAKE_CXX_FLAGS_QUICK "-O1 -g0")
+set(CMAKE_C_FLAGS_QUICK "-O1 -g1")
+set(CMAKE_CXX_FLAGS_QUICK "-O1 -g1")
 
 
 CHECK_CXX_COMPILER_FLAG("-fvisibility=hidden"
@@ -68,9 +76,15 @@ endif(LTO)
 # MSVC has default flags that CMake doesn't set
 if (MSVC)
 	add_definitions(-DUNICODE -D_UNICODE)
+	
 	if (MSVC_VERSION GREATER_EQUAL 1910)
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /permissive-")
-		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /permissive-")
+	    if (MSVC_VERSION EQUAL 1928)
+		    # HACK - MSVC++ compiler 19.28 (shipped with visual studio 16.9) cause errors in <optional> and constexpr Colour with /permissive-
+	        # See https://developercommunity2.visualstudio.com/t/Unexpected-error-C2131:-expression-did/1343697?entry=problem&ref=native&refTime=1615948128399&refUserId=1a6b34b3-01a5-4b5d-972d-b81d902f1e66
+		else()
+		    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /permissive-")
+		    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /permissive-")
+		endif()
 	endif()
 	if (MSVC_PDB)
 		set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
@@ -103,8 +117,17 @@ if (WIN32)
 	set(sources ${sources} "apocicon.rc")
 endif()
 
+
+if (APPLE)
+set(MACOSX_BUNDLE_BUNDLE_NAME OpenApoc)
+
+ADD_EXECUTABLE(${CMAKE_PROJECT_NAME} MACOSX_BUNDLE game/main.cpp ${sources}
+		${FRAMEWORK_SOURCES})
+else()
 ADD_EXECUTABLE(${CMAKE_PROJECT_NAME} game/main.cpp ${sources}
 		${FRAMEWORK_SOURCES})
+endif()
+
 
 target_link_libraries(${CMAKE_PROJECT_NAME} OpenApoc_Library)
 target_link_libraries(${CMAKE_PROJECT_NAME} OpenApoc_Framework)
@@ -125,9 +148,12 @@ INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR})
 # apoc data copy
 SET( EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin )
 
-install(TARGETS ${CMAKE_PROJECT_NAME}
-		RUNTIME DESTINATION bin)
-install(DIRECTORY ${CMAKE_SOURCE_DIR}data/ DESTINATION share/OpenApoc)
+
+if (NOT APPLE)
+		install(TARGETS ${CMAKE_PROJECT_NAME}
+				RUNTIME DESTINATION bin)
+		install(DIRECTORY ${CMAKE_SOURCE_DIR}data/ DESTINATION share/OpenApoc)
+endif()
 
 if(ENABLE_TESTS)
 	enable_testing()

@@ -12,7 +12,7 @@
 #include <map>
 
 // Uncomment to allow projectiles to shoot down friendly projectiles
-//#define DEBUG_ALLOW_PROJECTILE_ON_PROJECTILE_FRIENDLY_FIRE
+// #define DEBUG_ALLOW_PROJECTILE_ON_PROJECTILE_FRIENDLY_FIRE
 
 namespace OpenApoc
 {
@@ -149,11 +149,10 @@ class VehicleMover
 	virtual ~VehicleMover();
 };
 
-class Vehicle : public StateObject,
+class Vehicle : public StateObject<Vehicle>,
                 public std::enable_shared_from_this<Vehicle>,
                 public EquippableObject
 {
-	STATE_OBJECT(Vehicle)
   public:
 	~Vehicle() override;
 	Vehicle() = default;
@@ -175,6 +174,14 @@ class Vehicle : public StateObject,
 		Low = 3
 	};
 	Altitude altitude = Altitude::Standard;
+
+	enum class VehicleStatus
+	{
+		Operational,
+		Destroyed
+	};
+	VehicleStatus status = VehicleStatus::Operational;
+
 	// Adjusts position by altitude preference
 	Vec3<int> getPreferredPosition(Vec3<int> position) const;
 	Vec3<int> getPreferredPosition(int x, int y, int z = 0) const;
@@ -184,7 +191,7 @@ class Vehicle : public StateObject,
 	StateRef<VehicleType> type;
 	StateRef<Organisation> owner;
 	UString name;
-	std::list<up<VehicleMission>> missions;
+	std::list<VehicleMission> missions;
 	std::list<sp<VEquipment>> equipment;
 	std::list<StateRef<VEquipmentType>> loot;
 	StateRef<City> city;
@@ -229,6 +236,9 @@ class Vehicle : public StateObject,
 	StateRef<Vehicle> carriedVehicle;
 	StateRef<Vehicle> carriedByVehicle;
 
+	// How Many Tiles have already been repaired this night by this perticular vehicle
+	int tilesRepaired = 0;
+
 	sp<TileObjectVehicle> tileObject;
 	sp<TileObjectShadow> shadowObject;
 
@@ -268,6 +278,7 @@ class Vehicle : public StateObject,
 	void startFalling(GameState &state, StateRef<Vehicle> attacker = nullptr);
 	void adjustRelationshipOnDowned(GameState &state, StateRef<Vehicle> attacker);
 	bool isDead() const;
+	bool canDefend() const;
 
 	bool canAddEquipment(Vec2<int> pos, StateRef<VEquipmentType> type) const;
 	sp<VEquipment> addEquipment(GameState &state, Vec2<int> pos,
@@ -317,7 +328,10 @@ class Vehicle : public StateObject,
 	bool canTeleport() const;
 	bool hasTeleporter() const;
 	bool hasDimensionShifter() const;
+	bool canDamageBuilding(StateRef<Building> target) const;
 	bool isIdle() const;
+
+	bool wasAlreadyAtTgtBuilding;
 
 	// This is the 'sum' of all armors?
 	int getArmor() const;
@@ -338,16 +352,18 @@ class Vehicle : public StateObject,
 
 	void nextFrame(int ticks);
 
+	bool moduleInUse(sp<VEquipment> &e);
+
 	void setPosition(const Vec3<float> &pos);
 
 	void setManualFirePosition(const Vec3<float> &pos);
 
 	// Adds mission to list of missions, returns iterator to mission if successful, missions.end()
 	// otherwise
-	typename decltype(missions)::iterator addMission(GameState &state, VehicleMission *mission,
+	typename decltype(missions)::iterator addMission(GameState &state, VehicleMission mission,
 	                                                 bool toBack = false);
 	// Replaces all missions with provided mission, returns true if successful
-	bool setMission(GameState &state, VehicleMission *mission);
+	bool setMission(GameState &state, VehicleMission mission);
 	bool clearMissions(GameState &state, bool forced = false);
 
 	// Pops all finished missions, returns true if popped
@@ -367,6 +383,8 @@ class Vehicle : public StateObject,
 	sp<Equipment> getEquipmentAt(const Vec2<int> &position) const override;
 	const std::list<EquipmentLayoutSlot> &getSlots() const override;
 	std::list<std::pair<Vec2<int>, sp<Equipment>>> getEquipment() const override;
+
+	const UString getFormattedVehicleNameForEventMessage(GameState &state) const;
 
 	// Following members are not serialized, but rather setup during game
 

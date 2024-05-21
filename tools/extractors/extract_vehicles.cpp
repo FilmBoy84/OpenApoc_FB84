@@ -199,10 +199,9 @@ void InitialGameStateExtractor::extractVehicles(GameState &state) const
 			if (v.animation_type == 0)
 			{
 				vehicle->type = VehicleType::Type::UFO;
-				vehicle->canEnterDimensionGate = true;
 				if (v.size_x == 1 && v.size_y == 1)
 				{
-					vehicle->mapIconType = VehicleType::MapIconType::SmallCircle;
+					vehicle->mapIconType = VehicleType::MapIconType::Arrow;
 				}
 				else if (v.size_x == 2 && v.size_y == 2)
 				{
@@ -293,7 +292,6 @@ void InitialGameStateExtractor::extractVehicles(GameState &state) const
 				};
 
 				vehicle->mapIconType = VehicleType::MapIconType::Arrow;
-				vehicle->canEnterDimensionGate = vehicle->manufacturer.id == "ORG_X-COM";
 
 				int image_offset = 0;
 				for (auto &bank : bankings)
@@ -336,6 +334,7 @@ void InitialGameStateExtractor::extractVehicles(GameState &state) const
 		vehicle->health = v.constitution;
 		vehicle->crash_health = v.crash_constitution;
 		vehicle->weight = v.weight;
+		vehicle->canEnterDimensionGate = (v.dimension_travel != 0);
 
 		vehicle->armour[VehicleType::ArmourDirection::Rear] = v.armour_rear;
 		vehicle->armour[VehicleType::ArmourDirection::Top] = v.armour_top;
@@ -361,7 +360,7 @@ void InitialGameStateExtractor::extractVehicles(GameState &state) const
 		memcpy((void *)&equipment_screen_filename[0], (void *)&v.equipment_screen_name[0], 8);
 		equipment_screen_filename[8] = '\0';
 		std::string equipment_screen_image =
-		    "xcom3/ufodata/" + UString(equipment_screen_filename).toLower().str() + ".pcx";
+		    "xcom3/ufodata/" + to_lower(UString(equipment_screen_filename)) + ".pcx";
 		// If it's all NULLs skip (as it might be an alien ship or something and therefore no
 		// equipment screen)
 		if (equipment_screen_filename[0] != '\0')

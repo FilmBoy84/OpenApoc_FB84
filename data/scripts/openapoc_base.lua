@@ -7,7 +7,7 @@ local CFG = OpenApoc.Framework.Config
 function pickRandom(t)
 	return t[GS.rng:randBoundsInclusive(1, #t)]
 end
-function math.clamp(v, max, min)
+function math.clamp(v, min, max)
 	return math.min(math.max(v, min), max)
 end
 function math.round(v)
@@ -34,8 +34,8 @@ end
 --table.dump(OpenApoc, 1)
 --print("}")
 
-dofile('data/scripts/update_economy.lua')
-dofile('data/scripts/update_ufo_growth.lua')
+dofile('scripts/update_economy.lua')
+dofile('scripts/update_ufo_growth.lua')
 
 local oldNewGameHook = OpenApoc.hook.newGame
 OA.hook.newGame = function()
@@ -136,14 +136,6 @@ local oldUpdateEndOfWeekHook = OpenApoc.hook.updateEndOfWeek
 OpenApoc.hook.updateEndOfWeek = function()
 	if oldUpdateEndOfWeekHook then oldUpdateEndOfWeekHook() end
 
-	FW.LogWarning('Implement economy for orgs, for now just give em cash')
-	for org_id, org_object in pairs(GS.organisations) do
-		if org_id ~= GS.player.id then
-			if org_object.balance < 100000 then
-				org_object.balance = 100000
-			end
-		end
-	end
 	updateUfoGrowth()
 	updateEconomy()
 end

@@ -3,6 +3,7 @@
 #include "forms/graphic.h"
 #include "forms/label.h"
 #include "forms/listbox.h"
+#include "forms/scrollbar.h"
 #include "forms/textbutton.h"
 #include "forms/ui.h"
 #include "framework/event.h"
@@ -25,7 +26,7 @@ namespace OpenApoc
 
 UfopaediaCategoryView::UfopaediaCategoryView(sp<GameState> state, sp<UfopaediaCategory> cat,
                                              sp<UfopaediaEntry> entry)
-    : Stage(), menuform(ui().getForm("ufopaedia")), state(state), category(cat)
+    : Stage(), menuform(ui().getForm("ufopaedia")), state(state), category(cat), baseY(0), baseH(0)
 {
 	// Start with the intro page
 	this->position_iterator = this->category->entries.end();
@@ -55,7 +56,6 @@ void UfopaediaCategoryView::begin()
 	auto infoLabel = menuform->findControlTyped<Label>("TEXT_INFO");
 	auto entryList = menuform->findControlTyped<ListBox>("LISTBOX_SHORTCUTS");
 	entryList->clear();
-	entryList->ItemSize = infoLabel->getFont()->getFontHeight() + 2;
 	for (auto &pair : this->category->entries)
 	{
 		auto entry = pair.second;
@@ -70,10 +70,12 @@ void UfopaediaCategoryView::begin()
 		entryControl->RenderStyle = TextButton::ButtonRenderStyle::Flat;
 		entryControl->TextHAlign = HorizontalAlignment::Left;
 		entryControl->TextVAlign = VerticalAlignment::Centre;
+		entryControl->Size.y = infoLabel->getFont()->getFontHeight() + 2;
 		entryControl->setData(entry);
 		entryList->addItem(entryControl);
 	}
 	baseY = infoLabel->Location.y;
+	baseH = infoLabel->Size.y;
 	for (int i = 0; i < 9; i++)
 	{
 		auto labelName = format("LABEL_%d", i + 1);
@@ -132,7 +134,9 @@ void UfopaediaCategoryView::eventOccurred(Event *e)
 		switch (e->keyboard().KeyCode)
 		{
 			case SDLK_ESCAPE:
-				fw().stageQueueCommand({StageCmd::Command::POP});
+			case SDLK_RETURN:
+			case SDLK_KP_ENTER:
+				menuform->findControl("BUTTON_QUIT")->click();
 				return;
 			case SDLK_UP:
 				setNextSection();
@@ -427,6 +431,13 @@ void UfopaediaCategoryView::setFormStats()
 								statsValues[row++]->setText(tr("Cloaks Craft"));
 							}
 							break;
+						default:
+						{
+							LogError("Trying to read non-vehicle equipment type %s on vehicle "
+							         "equipment ufopaedia page",
+							         ref->id);
+							break;
+						}
 					}
 					break;
 				}
@@ -439,7 +450,7 @@ void UfopaediaCategoryView::setFormStats()
 					statsValues[row++]->setText(
 					    format("%dx%d", ref->equipscreen_size.x, ref->equipscreen_size.y));
 					if (ref->type == AEquipmentType::Type::Ammo ||
-					    ref->type == AEquipmentType::Type::Weapon && ref->ammo_types.empty())
+					    (ref->type == AEquipmentType::Type::Weapon && ref->ammo_types.empty()))
 					{
 						statsLabels[row]->setText(tr("Power"));
 						statsValues[row++]->setText(Strings::fromInteger(ref->damage));
@@ -522,11 +533,17 @@ void UfopaediaCategoryView::setFormStats()
 		int y = statsLabels[row]->Location.y;
 		y += statsLabels[row]->Size.y * 2;
 		menuform->findControlTyped<Label>("TEXT_INFO")->Location.y = y;
+		menuform->findControlTyped<Label>("TEXT_INFO")->Size.y = baseH - (y - baseY);
 	}
 	else
 	{
 		menuform->findControlTyped<Label>("TEXT_INFO")->Location.y = baseY;
+		menuform->findControlTyped<Label>("TEXT_INFO")->Size.y = baseH;
 	}
+	menuform->findControlTyped<ScrollBar>("SCROLL_INFO")->Location.y =
+	    menuform->findControlTyped<Label>("TEXT_INFO")->Location.y;
+	menuform->findControlTyped<ScrollBar>("SCROLL_INFO")->Size.y =
+	    menuform->findControlTyped<Label>("TEXT_INFO")->Size.y;
 }
 
 void UfopaediaCategoryView::setNextTopic()

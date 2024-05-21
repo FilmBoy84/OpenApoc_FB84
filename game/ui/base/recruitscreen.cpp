@@ -31,32 +31,21 @@
 namespace OpenApoc
 {
 
-namespace
-{
-static const std::map<AgentType::Role, int> hireCost = {
-    {AgentType::Role::Soldier, HIRE_COST_SOLDIER},
-    {AgentType::Role::BioChemist, HIRE_COST_BIO},
-    {AgentType::Role::Physicist, HIRE_COST_PHYSIC},
-    {AgentType::Role::Engineer, HIRE_COST_ENGI}};
-static const std::map<AgentType::Role, int> fireCost = {
-    {AgentType::Role::Soldier, FIRE_COST_SOLDIER},
-    {AgentType::Role::BioChemist, FIRE_COST_BIO},
-    {AgentType::Role::Physicist, FIRE_COST_PHYSIC},
-    {AgentType::Role::Engineer, FIRE_COST_ENGI}};
-} // namespace
-
 RecruitScreen::RecruitScreen(sp<GameState> state)
     : BaseStage(state), bigUnitRanks(getBigUnitRanks())
 {
 	// Load resources
 	form = ui().getForm("recruitscreen");
 	formAgentStats = form->findControlTyped<Form>("AGENT_STATS_VIEW");
+	formAgentProfile = form->findControlTyped<Form>("AGENT_PROFILE_VIEW");
 	formPersonnelStats = form->findControlTyped<Form>("PERSONNEL_STATS_VIEW");
 	formAgentStats->setVisible(false);
+	formAgentProfile->setVisible(false);
 	formPersonnelStats->setVisible(false);
 
 	// Assign event handlers
-	onHover = [this](FormsEvent *e) {
+	onHover = [this](FormsEvent *e)
+	{
 		auto list = std::static_pointer_cast<ListBox>(e->forms().RaisedBy);
 		auto agent = list->getHoveredData<Agent>();
 		if (agent)
@@ -97,44 +86,50 @@ RecruitScreen::RecruitScreen(sp<GameState> state)
 		for (auto &control : list)
 		{
 			// MouseClick - move an agent to opposite list
-			control->addCallback(FormEventType::MouseClick, [this](FormsEvent *e) {
-				int leftIndex = getLeftIndex();
-				int rightIndex = 8;
+			control->addCallback(
+			    FormEventType::MouseClick,
+			    [this](FormsEvent *e)
+			    {
+				    int leftIndex = getLeftIndex();
+				    int rightIndex = 8;
 
-				auto listLeft = form->findControlTyped<ListBox>("LIST1");
-				auto listRight = form->findControlTyped<ListBox>("LIST2");
+				    auto listLeft = form->findControlTyped<ListBox>("LIST1");
+				    auto listRight = form->findControlTyped<ListBox>("LIST2");
 
-				auto agentControl = e->forms().RaisedBy;
-				if (std::find(agentLists[leftIndex].begin(), agentLists[leftIndex].end(),
-				              agentControl) != agentLists[leftIndex].end())
-				{
-					listLeft->removeItem(agentControl);
-					listRight->addItem(agentControl);
-					agentLists[leftIndex].erase(std::find(
-					    agentLists[leftIndex].begin(), agentLists[leftIndex].end(), agentControl));
-					agentLists[rightIndex].push_back(agentControl);
-				}
-				else if (this->state->current_base->getUsage(
-				             *(this->state), FacilityType::Capacity::Quarters, lqDelta + 1) > 100)
-				{
-					fw().stageQueueCommand(
-					    {StageCmd::Command::PUSH,
-					     mksp<MessageBox>(tr("Accomodation exceeded"),
-					                      tr("Transfer limited by available accommodation."),
-					                      MessageBox::ButtonOptions::Ok)});
-				}
-				else
-				{
-					listRight->removeItem(agentControl);
-					listLeft->addItem(agentControl);
-					agentLists[rightIndex].erase(std::find(agentLists[rightIndex].begin(),
-					                                       agentLists[rightIndex].end(),
-					                                       agentControl));
-					agentLists[leftIndex].push_back(agentControl);
-				}
+				    auto agentControl = e->forms().RaisedBy;
+				    if (std::find(agentLists[leftIndex].begin(), agentLists[leftIndex].end(),
+				                  agentControl) != agentLists[leftIndex].end())
+				    {
+					    listLeft->removeItem(agentControl);
+					    listRight->addItem(agentControl);
+					    agentLists[leftIndex].erase(std::find(agentLists[leftIndex].begin(),
+					                                          agentLists[leftIndex].end(),
+					                                          agentControl));
+					    agentLists[rightIndex].push_back(agentControl);
+				    }
+				    else if (this->state->current_base->getUsage(*(this->state),
+				                                                 FacilityType::Capacity::Quarters,
+				                                                 lqDelta + 1) > 100.f)
+				    {
+					    fw().stageQueueCommand(
+					        {StageCmd::Command::PUSH,
+					         mksp<MessageBox>(tr("Accomodation exceeded"),
+					                          tr("Transfer limited by available accommodation."),
+					                          MessageBox::ButtonOptions::Ok)});
+				    }
+				    else
+				    {
+					    listRight->removeItem(agentControl);
+					    listLeft->addItem(agentControl);
 
-				updateFormValues();
-			});
+					    agentLists[rightIndex].erase(std::find(agentLists[rightIndex].begin(),
+					                                           agentLists[rightIndex].end(),
+					                                           agentControl));
+					    agentLists[leftIndex].push_back(agentControl);
+				    }
+
+				    updateFormValues();
+			    });
 		}
 	}
 }
@@ -190,6 +185,7 @@ void RecruitScreen::changeBase(sp<Base> newBase)
 	textViewBaseStatic->setText(state->current_base->name);
 
 	formAgentStats->setVisible(false);
+	formAgentProfile->setVisible(false);
 	formPersonnelStats->setVisible(false);
 
 	// Apply display type and base highlight
@@ -201,6 +197,7 @@ void RecruitScreen::setDisplayType(const AgentType::Role role)
 	if (this->type != role)
 	{
 		formAgentStats->setVisible(false);
+		formAgentProfile->setVisible(false);
 		formPersonnelStats->setVisible(false);
 		this->type = role;
 	}
@@ -289,7 +286,7 @@ void RecruitScreen::updateFormValues()
 		if (agent->owner != player)
 		{
 			lqDelta++;
-			moneyDelta -= hireCost.at(agent->type->role);
+			moneyDelta -= state->agent_salary.at(agent->type->role);
 		}
 		// Transferred to this
 		else if (bases[agent->homeBuilding->base.id] != leftIndex)
@@ -311,7 +308,7 @@ void RecruitScreen::updateFormValues()
 			// Hired to other
 			if (agent->owner != player)
 			{
-				moneyDelta -= hireCost.at(agent->type->role);
+				moneyDelta -= state->agent_salary.at(agent->type->role);
 			}
 			// Transferred to other
 			else if (bases[agent->homeBuilding->base.id] == leftIndex)
@@ -328,7 +325,7 @@ void RecruitScreen::updateFormValues()
 		if (agent->owner == player)
 		{
 			// Fired from any base
-			moneyDelta -= fireCost.at(agent->type->role);
+			moneyDelta -= state->agent_fired_penalty.at(agent->type->role);
 			// Fired from this base in particular
 			if (bases[agent->homeBuilding->base.id] == leftIndex)
 			{
@@ -348,10 +345,11 @@ void RecruitScreen::updateFormValues()
 
 void RecruitScreen::updateBaseHighlight()
 {
-	int usage = state->current_base->getUsage(*state, FacilityType::Capacity::Quarters, lqDelta);
+	const auto usage =
+	    state->current_base->getUsage(*state, FacilityType::Capacity::Quarters, lqDelta);
 	fillBaseBar(usage);
 	auto facilityLabel = form->findControlTyped<Label>("FACILITY_FIRST_TEXT");
-	facilityLabel->setText(format("%s%%", usage));
+	facilityLabel->setText(format("%.f%%", usage));
 }
 
 void RecruitScreen::fillBaseBar(int percent)
@@ -389,13 +387,15 @@ void RecruitScreen::displayAgentStats(const Agent &agent)
 	switch (agent.type->role)
 	{
 		case AgentType::Role::Soldier:
-			AgentSheet(formAgentStats).display(agent, bigUnitRanks, false);
+			AgentSheet(formAgentProfile, formAgentStats).display(agent, bigUnitRanks, false);
 			formAgentStats->setVisible(true);
+			formAgentProfile->setVisible(true);
 			formPersonnelStats->setVisible(false);
 			break;
 		default:
 			personnelSheet(agent, formPersonnelStats);
 			formAgentStats->setVisible(false);
+			formAgentProfile->setVisible(false);
 			formPersonnelStats->setVisible(true);
 	}
 }
@@ -509,17 +509,36 @@ void RecruitScreen::executeOrders()
 	{
 		for (auto &a : agentLists[i])
 		{
-			auto agent = a->getData<Agent>();
+			StateRef<Agent> agent{state.get(), a->getData<Agent>()};
 			if (bases[i] != agent->homeBuilding->base)
 			{
 				if (agent->owner != player)
 				{
 					agent->hire(*state, bases[i]->building);
-					player->balance -= hireCost.at(agent->type->role);
+					player->balance -= state->agent_salary.at(agent->type->role);
 				}
 				else
 				{
-					agent->transfer(*state, bases[i]->building);
+					switch (agent->type->role)
+					{
+						case AgentType::Role::Physicist:
+						case AgentType::Role::BioChemist:
+						case AgentType::Role::Engineer:
+						{
+							if (agent->lab_assigned)
+							{
+								StateRef<Lab> lab{state.get(), agent->lab_assigned};
+								agent->lab_assigned->removeAgent(lab, agent);
+							}
+							agent->transfer(*state, bases[i]->building);
+							break;
+						}
+						case AgentType::Role::Soldier:
+						{
+							agent->transfer(*state, bases[i]->building);
+							break;
+						}
+					}
 				}
 			}
 		}
@@ -530,7 +549,7 @@ void RecruitScreen::executeOrders()
 		auto agent = a->getData<Agent>();
 		if (agent->owner == state->getPlayer())
 		{
-			player->balance -= fireCost.at(agent->type->role);
+			player->balance -= state->agent_fired_penalty.at(agent->type->role);
 			std::list<sp<AEquipment>> equipmentToStrip;
 			for (auto &e : agent->equipment)
 			{
@@ -547,8 +566,11 @@ void RecruitScreen::executeOrders()
 				    e->type->type == AEquipmentType::Type::Ammo ? e->ammo : 1;
 			}
 			agent->die(*state, true);
+			agent->handleDeath(*state);
 		}
 	}
+
+	state->cleanUpDeathNote();
 }
 
 void RecruitScreen::closeScreen(bool confirmed)
@@ -560,7 +582,6 @@ void RecruitScreen::closeScreen(bool confirmed)
 	}
 
 	// Step 01 : Calculate money and lq deltas
-	int leftIndex = getLeftIndex();
 	int moneyDelta = 0;
 	std::vector<int> vecLqDelta;
 	vecLqDelta.resize(8);
@@ -584,7 +605,7 @@ void RecruitScreen::closeScreen(bool confirmed)
 			if (agent->owner != player)
 			{
 				vecLqDelta[i]++;
-				moneyDelta -= hireCost.at(agent->type->role);
+				moneyDelta -= state->agent_salary.at(agent->type->role);
 			}
 			// Moved away from his base to this base
 			else if (bases[agent->homeBuilding->base.id] != i)
@@ -601,7 +622,7 @@ void RecruitScreen::closeScreen(bool confirmed)
 		if (agent->owner == player)
 		{
 			vecLqDelta[bases[agent->homeBuilding->base.id]]--;
-			moneyDelta -= fireCost.at(agent->type->role);
+			moneyDelta -= state->agent_fired_penalty.at(agent->type->role);
 		}
 	}
 
@@ -621,7 +642,8 @@ void RecruitScreen::closeScreen(bool confirmed)
 	StateRef<Base> bad_base;
 	for (auto &b : state->player_bases)
 	{
-		if (b.second->getUsage(*state, FacilityType::Capacity::Quarters, vecLqDelta[bindex]) > 100)
+		if (b.second->getUsage(*state, FacilityType::Capacity::Quarters, vecLqDelta[bindex]) >
+		    100.f)
 		{
 			bad_base = b.second->building->base;
 			break;
@@ -678,7 +700,7 @@ void RecruitScreen::eventOccurred(Event *e)
 	if (e->type() == EVENT_KEY_DOWN)
 	{
 		if (e->keyboard().KeyCode == SDLK_ESCAPE || e->keyboard().KeyCode == SDLK_RETURN ||
-		    e->keyboard().KeyCode == SDLK_SPACE)
+		    e->keyboard().KeyCode == SDLK_SPACE || e->keyboard().KeyCode == SDLK_KP_ENTER)
 		{
 			form->findControl("BUTTON_OK")->click();
 			return;

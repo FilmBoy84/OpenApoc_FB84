@@ -122,7 +122,8 @@ void writeSource(std::ofstream &out, const StateDefinition &state,
 		// non-const case
 		out << "template<> int getIndexMetamethod<" << object.name << ">(lua_State* L)\n"
 		    << "{\n"
-		    << "\t" << object.name << "** obj = (" << object.name << "**)lua_touserdata(L, 1);\n"
+		    << "\t[[maybe_unused]]" << object.name << "** obj = (" << object.name
+		    << "**)lua_touserdata(L, 1);\n"
 		    << "\tstd::string key = lua_tostring(L, 2);\n"
 		    << "\tlua_settop(L, 0);\n"
 		    << "\t";
@@ -140,7 +141,7 @@ void writeSource(std::ofstream &out, const StateDefinition &state,
 		// const case
 		out << "template<> int getIndexConstMetamethod<" << object.name << ">(lua_State* L)\n"
 		    << "{\n"
-		    << "\tconst " << object.name << "** obj = (const " << object.name
+		    << "\t[[maybe_unused]] const " << object.name << "** obj = (const " << object.name
 		    << "**)lua_touserdata(L, 1);\n"
 		    << "\tstd::string key = lua_tostring(L, 2);\n"
 		    << "\tlua_settop(L, 0);\n"
@@ -159,7 +160,8 @@ void writeSource(std::ofstream &out, const StateDefinition &state,
 		// non-const only
 		out << "template<> int newIndexMetamethod<" << object.name << ">(lua_State *L)\n"
 		    << "{\n"
-		    << "\t" << object.name << "** obj = (" << object.name << "**)lua_touserdata(L, 1);\n"
+		    << "\t[[maybe_unused]]" << object.name << "** obj = (" << object.name
+		    << "**)lua_touserdata(L, 1);\n"
 		    << "\tstd::string key = lua_tostring(L, 2);\n"
 		    << "\t";
 		for (auto &m : object.members)
@@ -177,7 +179,7 @@ void writeSource(std::ofstream &out, const StateDefinition &state,
 		// const and non-const
 		out << "template<> int toStringMetamethod<" << object.name << ">(lua_State *L)\n"
 		    << "{\n"
-		    << "\tconst " << object.name << " **obj = (const " << object.name
+		    << "\t[[maybe_unused]] const " << object.name << " **obj = (const " << object.name
 		    << "**)lua_touserdata(L, -1);\n"
 		    << "\tlua_settop(L, 0);\n"
 		    << "\tlua_pushfstring(L, \"[" << object.name << " @ %p]\", (const void*)(*obj));\n"
@@ -231,7 +233,8 @@ void writeSource(std::ofstream &out, const StateDefinition &state,
 
 	iterateDepthFirstByNames(
 	    state.enums.begin(), state.enums.end(), out, &SerializeEnum::name,
-	    [&out](auto &e) {
+	    [&out](auto &e)
+	    {
 		    for (auto &v : e.values)
 		    {
 			    out << "\tlua_pushinteger(L, static_cast<int>(" << e.name << "::" << v << "));\n"
@@ -319,12 +322,12 @@ int main(int argc, char **argv)
 	}
 
 	// sort the items by name so they are ordered like a DFS iteration in a trie
-	std::sort(
-	    state.enums.begin(), state.enums.end(),
-	    [](const SerializeEnum &lhs, const SerializeEnum &rhs) { return lhs.name < rhs.name; });
-	std::sort(
-	    state.objects.begin(), state.objects.end(),
-	    [](const SerializeObject &lhs, const SerializeObject &rhs) { return lhs.name < rhs.name; });
+	std::sort(state.enums.begin(), state.enums.end(),
+	          [](const SerializeEnum &lhs, const SerializeEnum &rhs)
+	          { return lhs.name < rhs.name; });
+	std::sort(state.objects.begin(), state.objects.end(),
+	          [](const SerializeObject &lhs, const SerializeObject &rhs)
+	          { return lhs.name < rhs.name; });
 
 	writeHeader(outputHeaderFile, state);
 	writeSource(outputSourceFile, state, outputHeaderPath);

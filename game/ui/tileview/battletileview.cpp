@@ -11,7 +11,6 @@
 #include "framework/palette.h"
 #include "framework/renderer.h"
 #include "framework/sound.h"
-#include "framework/trace.h"
 #include "game/state/battle/battle.h"
 #include "game/state/battle/battlehazard.h"
 #include "game/state/battle/battleitem.h"
@@ -413,7 +412,6 @@ void BattleTileView::eventOccurred(Event *e)
 
 void BattleTileView::render()
 {
-	TRACE_FN;
 	Renderer &r = *fw().renderer;
 	r.clear();
 	r.setPalette(this->pal);
@@ -618,7 +616,8 @@ void BattleTileView::render()
 						         battle.visibleUnits[battle.currentPlayer].end()))
 						{
 							if (battle.currentPlayer->isRelatedTo(unit->owner) ==
-							    Organisation::Relation::Hostile)
+							        Organisation::Relation::Hostile &&
+							    unit->owner != state.getCivilian())
 							{
 								selectionImageBack = selectedTileFireImageBack;
 								selectionImageFront = selectedTileFireImageFront;
@@ -1582,7 +1581,8 @@ void BattleTileView::render()
 	{
 		auto font = ui().getFont("smallset");
 		auto cursorPositionString = font->getString(format("Cursor at %s", selectedTilePosition));
-		r.draw(cursorPositionString, {0, 0});
+		int ypos = (config().getBool("OpenApoc.NewFeature.DebugCommandsVisible")) ? 224 : 0;
+		r.draw(cursorPositionString, {0, ypos});
 	}
 }
 
